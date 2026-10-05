@@ -23,10 +23,14 @@ from PyQt6.QtWidgets import (
 from archivevault.core.settings import settings
 from archivevault.core.utils import (
     format_size,
+    get_dosbox_info,
     get_dosbox_path,
+    get_launchbox_path,
+    launch_launchbox,
     launch_local_dosbox,
     open_containing_folder,
     open_file,
+    open_with_7zip,
 )
 from archivevault.ui.dosbox_player import detect_retro_platform
 
@@ -205,23 +209,38 @@ class ArcadeTab(QWidget):
                 background-color: #141417;
                 border: 1px solid #27272a;
                 border-radius: 8px;
-                padding: 8px 14px;
+                padding: 6px 12px;
             }
         """)
         cfg_layout = QHBoxLayout(self.dosbox_cfg_card)
-        cfg_layout.setContentsMargins(8, 4, 8, 4)
-        cfg_layout.setSpacing(12)
+        cfg_layout.setContentsMargins(6, 4, 6, 4)
+        cfg_layout.setSpacing(10)
 
         self.dosbox_status_lbl = QLabel()
         self.dosbox_status_lbl.setStyleSheet("font-size: 12px; color: #d4d4d8;")
-        self._update_dosbox_status_label()
         cfg_layout.addWidget(self.dosbox_status_lbl, stretch=1)
 
+        self.btn_open_lb = QPushButton("LaunchBox 🚀")
+        self.btn_open_lb.setFixedSize(115, 28)
+        self.btn_open_lb.setStyleSheet("font-size: 11px; font-weight: 600; background-color: #3b82f6; color: #ffffff;")
+        self.btn_open_lb.setToolTip("Open LaunchBox to manage or play MAME arcade ROM collections")
+        self.btn_open_lb.clicked.connect(self._on_launch_lb)
+        cfg_layout.addWidget(self.btn_open_lb)
+
+        self.btn_toggle_dosbox = QPushButton("Disable External")
+        self.btn_toggle_dosbox.setFixedSize(120, 28)
+        self.btn_toggle_dosbox.setStyleSheet("font-size: 11px; font-weight: 600;")
+        self.btn_toggle_dosbox.setToolTip("Toggle between local DOSBox executable and ArchiveVault's built-in WebAssembly player")
+        self.btn_toggle_dosbox.clicked.connect(self._on_toggle_disable_dosbox)
+        cfg_layout.addWidget(self.btn_toggle_dosbox)
+
         btn_change_dosbox = QPushButton("Configure DOSBox...")
-        btn_change_dosbox.setFixedSize(140, 28)
+        btn_change_dosbox.setFixedSize(130, 28)
         btn_change_dosbox.setStyleSheet("font-size: 11px; font-weight: 600;")
         btn_change_dosbox.clicked.connect(self._on_configure_dosbox)
         cfg_layout.addWidget(btn_change_dosbox)
+
+        self._update_dosbox_status_label()
 
         hero_layout.addWidget(self.dosbox_cfg_card)
         canvas_layout.addWidget(hero_card)
@@ -355,15 +374,56 @@ class ArcadeTab(QWidget):
         main_layout.addWidget(self.scroll_area, stretch=1)
 
     def _update_dosbox_status_label(self):
-        dosbox_path = get_dosbox_path()
-        if dosbox_path and os.path.exists(dosbox_path):
+        info = get_dosbox_info()
+        dosbox_path = info.get("path")
+        source = info.get("source")
+
+        if source == "Disabled":
             self.dosbox_status_lbl.setText(
-                f"🎮 <b>DOSBox Executable:</b> <span style='color: #4ade80;'>Ready</span> &nbsp;•&nbsp; <code>{dosbox_path}</code>"
+                "🎮 <b>DOSBox Mode:</b> <span style='color: #f59e0b;'>In-App WebAssembly Player</span> &nbsp;•&nbsp; External DOSBox disabled"
             )
+            if hasattr(self, "btn_toggle_dosbox"):
+                self.btn_toggle_dosbox.setText("Enable DOSBox")
+        elif dosbox_path and os.path.exists(dosbox_path):
+            origin_desc = "LaunchBox 0.74" if info.get("is_launchbox") else source
+            self.dosbox_status_lbl.setText(
+                f"🎮 <b>DOSBox:</b> <span style='color: #4ade80;'>Ready ({origin_desc} • HD 1280x960)</span> &nbsp;•&nbsp; <code>{dosbox_path}</code>"
+            )
+            if hasattr(self, "btn_toggle_dosbox"):
+                self.btn_toggle_dosbox.setText("Disable External")
         else:
             self.dosbox_status_lbl.setText(
-                "🎮 <b>DOSBox Executable:</b> <span style='color: #f59e0b;'>Not Configured</span> &nbsp;•&nbsp; Native launch will use built-in player or default app"
+                "🎮 <b>DOSBox:</b> <span style='color: #f59e0b;'>Not Configured</span> &nbsp;•&nbsp; Games launch via built-in WebAssembly player"
             )
+            if hasattr(self, "btn_toggle_dosbox"):
+                self.btn_toggle_dosbox.setText("Disable External")
+
+        lb_path = info.get("launchbox_path")
+        if hasattr(self, "btn_open_lb"):
+            self.btn_open_lb.setVisible(bool(lb_path and os.path.exists(lb_path)))
+
+    def _on_toggle_disable_dosbox(self):
+        if settings.dosbox_path.lower() == "disabled":
+            settings.dosbox_path = ""
+            settings.save()
+            QMessageBox.information(
+                self,
+                "DOSBox Enabled",
+                "External DOSBox has been re-enabled and will auto-detect installed versions."
+            )
+        else:
+            settings.dosbox_path = "disabled"
+            settings.save()
+            QMessageBox.information(
+                self,
+                "In-App Player Active",
+                "External DOSBox disabled. All retro games will now play directly in ArchiveVault's built-in WebAssembly Theater."
+            )
+        self._update_dosbox_status_label()
+
+    def _on_launch_lb(self):
+        if not launch_launchbox():
+            QMessageBox.warning(self, "LaunchBox Not Found", "Could not launch LaunchBox. Please verify installation.")
 
     def _on_configure_dosbox(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -463,31 +523,57 @@ class ArcadeTab(QWidget):
         self._launch_game_file(file_path)
 
     def _launch_game_file(self, file_path: str):
-        """Intelligently launch a game file either in native DOSBox or default handler."""
+        """Intelligently launch a game file in high-res DOSBox, In-App Player, or LaunchBox."""
         if not os.path.exists(file_path):
             QMessageBox.warning(self, "File Not Found", f"Game file not found:\n{file_path}")
             return
 
         fname = os.path.basename(file_path)
         ext = os.path.splitext(fname)[1].lower()
+        parent_dir = os.path.basename(os.path.dirname(file_path))
+        combined_name = f"{parent_dir}_{fname}"
+        platform_info = detect_retro_platform(combined_name)
+        platform_name = platform_info.get("name", "MS-DOS")
 
-        # If it's a DOS executable or batch file
+        is_arcade = (
+            platform_name == "Arcade" or
+            "mame" in parent_dir.lower() or
+            "arcade" in parent_dir.lower() or
+            "mame" in fname.lower()
+        )
+
+        # 1. ARCADE / MAME ROMS
+        if is_arcade:
+            self._handle_arcade_rom_launch(file_path, fname, parent_dir)
+            return
+
+        # 2. MICROCOMPUTERS / CONSOLES (Amstrad CPC, Amiga, C64, ZX Spectrum, etc.)
+        if platform_name in ("Amstrad CPC", "ZX Spectrum", "Commodore 64", "Amiga", "Atari", "Apple II"):
+            self._handle_non_dos_microcomputer_launch(file_path, fname, platform_name)
+            return
+
+        # 3. DIRECT DOS EXECUTABLES (.exe, .com, .bat, .conf)
         if ext in ('.exe', '.com', '.bat', '.conf'):
-            success = launch_local_dosbox(file_path)
-            if not success:
-                # Fallback to standard open
+            dosbox_exe = get_dosbox_path()
+            if dosbox_exe:
+                success = launch_local_dosbox(file_path)
+                if not success:
+                    open_file(file_path)
+            else:
                 open_file(file_path)
             return
 
-        # If it's a zip archive
+        # 4. DOS ZIP ARCHIVES / OTHER ARCHIVES
         if ext in ('.zip', '.7z', '.gz', '.tar'):
             dosbox_exe = get_dosbox_path()
             if dosbox_exe:
-                # Offer native DOSBox or folder inspection
                 reply = QMessageBox.question(
                     self,
-                    "Launch Game Archive",
-                    f"Launch '{fname}' in DOSBox?\n\nYes: Launch in DOSBox\nNo: Open containing folder",
+                    "Launch DOS Game Archive",
+                    f"Launch MS-DOS game '{fname}' in high-resolution scaled DOSBox?\n\n"
+                    "ArchiveVault will automatically unpack and run the game (1280x960 4:3).\n\n"
+                    "Yes: Launch in DOSBox\n"
+                    "No: Open containing folder",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
                 )
                 if reply == QMessageBox.StandardButton.Yes:
@@ -495,11 +581,87 @@ class ArcadeTab(QWidget):
                 elif reply == QMessageBox.StandardButton.No:
                     open_containing_folder(file_path)
             else:
-                open_file(file_path)
+                open_containing_folder(file_path)
             return
 
-        # Default fallback
+        # Fallback
         open_file(file_path)
+
+    def _handle_arcade_rom_launch(self, file_path: str, fname: str, parent_dir: str):
+        """Handle user launching an Arcade / MAME ROM with clear explanations and choices."""
+        lb_exe = get_launchbox_path()
+        has_lb = bool(lb_exe and os.path.exists(lb_exe))
+
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Arcade ROM Detected (MAME)")
+        msg_box.setIcon(QMessageBox.Icon.Information)
+
+        lb_text = f"<br>• <b>LaunchBox is installed on your PC:</b> You can open LaunchBox to import and run your MAME arcade set with dedicated arcade cores." if has_lb else ""
+
+        html_text = f"""
+        <div style='font-size: 13px; line-height: 1.5;'>
+            <h3 style='margin: 0 0 8px 0; color: #f43f5e;'>🕹️ Arcade Cabinet ROM (MAME)</h3>
+            <p><b>{fname}</b> is an <b>Arcade Machine ROM</b> (from <i>{parent_dir}</i>), not an MS-DOS PC game.</p>
+            <p style='color: #a1a1aa;'>
+                <b>Why DOSBox won't run this:</b><br>
+                DOSBox strictly emulates IBM PC / MS-DOS computers (x86 CPU, Sound Blaster, VGA). It cannot emulate arcade cabinet hardware boards (Capcom CPS, Neo-Geo, custom Z80/68000 arcade processors).
+            </p>
+            {lb_text}
+            <p><b>Choose an action:</b></p>
+        </div>
+        """
+        msg_box.setText(html_text)
+
+        btn_ia = msg_box.addButton("🌐 Play In-App (Online MAME)", QMessageBox.ButtonRole.ActionRole)
+        btn_lb = msg_box.addButton("🚀 Open in LaunchBox", QMessageBox.ButtonRole.ActionRole) if has_lb else None
+        btn_folder = msg_box.addButton("📂 Open ROM Folder", QMessageBox.ButtonRole.ActionRole)
+        btn_dos = msg_box.addButton("🎮 Mount in DOSBox Anyway", QMessageBox.ButtonRole.ActionRole)
+        btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+
+        msg_box.exec()
+        clicked = msg_box.clickedButton()
+
+        if clicked == btn_ia:
+            rom_stem = os.path.splitext(fname)[0]
+            ident = parent_dir if parent_dir and "mame" in parent_dir.lower() else f"arcade_{rom_stem}"
+            self.play_dosbox_requested.emit(ident, f"Arcade: {rom_stem.upper()}")
+        elif has_lb and clicked == btn_lb:
+            launch_launchbox(file_path)
+        elif clicked == btn_folder:
+            open_containing_folder(file_path)
+        elif clicked == btn_dos:
+            launch_local_dosbox(file_path)
+
+    def _handle_non_dos_microcomputer_launch(self, file_path: str, fname: str, platform_name: str):
+        """Handle Amstrad CPC, Amiga, C64, ZX Spectrum files."""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(f"{platform_name} Game")
+        msg_box.setIcon(QMessageBox.Icon.Information)
+
+        html_text = f"""
+        <div style='font-size: 13px; line-height: 1.5;'>
+            <h3 style='margin: 0 0 8px 0; color: #38bdf8;'>💾 {platform_name} Software</h3>
+            <p><b>{fname}</b> is a <b>{platform_name}</b> disk/tape image, not an MS-DOS PC executable.</p>
+            <p style='color: #a1a1aa;'>
+                DOSBox is an MS-DOS PC emulator. To play this {platform_name} title, you can stream it through ArchiveVault's built-in WebAssembly multi-system theater or open your local emulator.
+            </p>
+        </div>
+        """
+        msg_box.setText(html_text)
+
+        btn_inapp = msg_box.addButton("🌐 Play in ArchiveVault Theater", QMessageBox.ButtonRole.ActionRole)
+        btn_open = msg_box.addButton("📂 Open File / Folder", QMessageBox.ButtonRole.ActionRole)
+        btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+
+        msg_box.exec()
+        clicked = msg_box.clickedButton()
+
+        if clicked == btn_inapp:
+            stem = os.path.splitext(fname)[0]
+            ident = f"{platform_name.lower().replace(' ', '_')}_{stem}"
+            self.play_dosbox_requested.emit(ident, f"{platform_name}: {stem}")
+        elif clicked == btn_open:
+            open_containing_folder(file_path)
 
     def scan_local_games(self):
         """Scan settings.download_dir for all retro game files."""
