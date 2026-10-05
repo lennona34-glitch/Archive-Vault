@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# User settings, queues, credentials & downloads
+settings.json
+queue.json
+queue.json.tmp
+ia.ini
+*.part
+*.tmp
+*.log
+downloads/
+
+# IDE & OS metadata
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Testing & coverage
+.pytest_cache/
+.coverage

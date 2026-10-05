@@ -1,0 +1,22 @@
+[project]
+name = "archive-vault"
+version = "1.0.0"
+description = "High-speed Internet Archive downloader, media streamer, retro arcade player, and batch torrent processor."
+readme = "README.md"
+authors = [
+    { name = "lennona34-glitch", email = "lennona34@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pillow>=12.3.0",
+    "pyqt6>=6.11.0",
+    "pyqt6-webengine>=6.11.0",
+    "requests>=2.34.2",
+]
+
+[project.scripts]
+archive-vault = "run:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
