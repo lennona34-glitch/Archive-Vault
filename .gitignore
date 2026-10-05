@@ -36,3 +36,15 @@ desktop.ini
 # Testing & coverage
 .pytest_cache/
 .coverage
+
+# Android build artifacts
+.gradle/
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/**/build/
+android/build/
+android/app/build/
+*.hprof
+*.apk
+*.aab

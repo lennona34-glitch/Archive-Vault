@@ -345,6 +345,8 @@ class ItemTab(QWidget):
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.canvas = QWidget()
         self.canvas_layout = QVBoxLayout(self.canvas)
@@ -741,7 +743,8 @@ class ItemTab(QWidget):
         total_files_count = len(self.curated_files) + len(self.supplementary_files)
         if total_files_count > 1 or torrent_file:
             size_tag = f" ({total_files_count:,} files • {total_size_str})" if total_size_str else f" ({total_files_count:,} files)"
-            self.download_torrent_btn.setText(f"⚡ Batch Process & Download Full Archive{size_tag}")
+            btn_text = f"⚡ Batch Process ({total_files_count:,} files)"
+            self.download_torrent_btn.setText(btn_text)
             self.download_torrent_btn.setToolTip(f"Inspect and batch download all {total_files_count:,} files ({total_size_str}) from this repository in ArchiveVault")
             self.download_torrent_btn.show()
         else:
@@ -751,10 +754,10 @@ class ItemTab(QWidget):
             primary = self.curated_files[0]
             sz = primary.get("size_formatted", "")
             if len(self.curated_files) > 10:
-                self.download_primary_btn.setText(f"⬇️ Download Largest Release ({sz})")
+                self.download_primary_btn.setText(f"⬇️ Download Largest ({sz})")
                 self.download_primary_btn.setToolTip(f"Download single largest file: {primary['name']} ({sz})")
             else:
-                self.download_primary_btn.setText(f"⚡ Download Main Release ({sz})")
+                self.download_primary_btn.setText(f"⚡ Download Main ({sz})")
                 self.download_primary_btn.setToolTip(f"Download {primary['name']} ({sz})")
             self.download_primary_btn.setEnabled(True)
         else:

@@ -33,6 +33,7 @@ class Settings:
         self.auto_resume_startup: bool = False
         self.create_item_subfolders: bool = True
         self.theme: str = "dark"
+        self.dosbox_path: str = ""
         
         self.load()
         self._check_and_import_ia_cli_config()
@@ -51,6 +52,7 @@ class Settings:
                     self.auto_resume_startup = data.get("auto_resume_startup", self.auto_resume_startup)
                     self.create_item_subfolders = data.get("create_item_subfolders", self.create_item_subfolders)
                     self.theme = data.get("theme", self.theme)
+                    self.dosbox_path = data.get("dosbox_path", self.dosbox_path)
 
                     # Auto-heal: If user pasted their 16-char S3 secret key into the Cookie field
                     if not self.s3_secret_key and self.cookies:
@@ -74,7 +76,8 @@ class Settings:
                 "chunk_size_kb": self.chunk_size_kb,
                 "auto_resume_startup": self.auto_resume_startup,
                 "create_item_subfolders": self.create_item_subfolders,
-                "theme": self.theme
+                "theme": self.theme,
+                "dosbox_path": self.dosbox_path
             }
             with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)

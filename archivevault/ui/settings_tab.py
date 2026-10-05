@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 
 from archivevault.core.api import ia_api
 from archivevault.core.settings import settings
+from archivevault.core.utils import get_dosbox_path
 
 class CredentialTesterSignals(QObject):
     result = pyqtSignal(bool, str)
@@ -200,7 +201,39 @@ class SettingsTab(QWidget):
 
         layout.addWidget(pref_box)
 
-        # --- Section 3: Save Button ---
+        # --- Section 3: Retro Gaming & DOSBox Emulation ---
+        emu_box = QFrame()
+        emu_box.setObjectName("card")
+        emu_layout = QVBoxLayout(emu_box)
+        emu_layout.setContentsMargins(18, 16, 18, 16)
+        emu_layout.setSpacing(12)
+
+        emu_title = QLabel("🕹️ Retro Gaming & DOSBox Emulation")
+        emu_title.setStyleSheet("font-size: 15px; font-weight: 700; color: #ffffff;")
+        emu_layout.addWidget(emu_title)
+
+        emu_desc = QLabel("Set your local DOSBox or LaunchBox executable path for launching offline PC games and ROMs directly from the DOSBox Arcade tab.")
+        emu_desc.setStyleSheet("color: #a1a1aa; font-size: 12px;")
+        emu_desc.setWordWrap(True)
+        emu_layout.addWidget(emu_desc)
+
+        row_dosbox = QHBoxLayout()
+        dosbox_lbl = QLabel("DOSBox Path:")
+        dosbox_lbl.setFixedWidth(130)
+        row_dosbox.addWidget(dosbox_lbl)
+
+        self.dosbox_input = QLineEdit()
+        self.dosbox_input.setPlaceholderText("Auto-detected or custom path to DOSBox.exe...")
+        row_dosbox.addWidget(self.dosbox_input)
+
+        browse_dosbox_btn = QPushButton("Browse... 📁")
+        browse_dosbox_btn.clicked.connect(self._browse_dosbox_path)
+        row_dosbox.addWidget(browse_dosbox_btn)
+        emu_layout.addLayout(row_dosbox)
+
+        layout.addWidget(emu_box)
+
+        # --- Section 4: Save Button ---
         btn_row = QHBoxLayout()
         self.save_btn = QPushButton("Save Settings 💾")
         self.save_btn.setObjectName("primaryBtn")
@@ -245,6 +278,7 @@ class SettingsTab(QWidget):
         self.subfolder_cb.setChecked(settings.create_item_subfolders)
         self.conc_spin.setValue(settings.max_concurrent_downloads)
         self.auto_resume_cb.setChecked(settings.auto_resume_startup)
+        self.dosbox_input.setText(settings.dosbox_path or get_dosbox_path() or "")
 
         idx = self.chunk_combo.findData(settings.chunk_size_kb)
         if idx >= 0:
@@ -263,6 +297,17 @@ class SettingsTab(QWidget):
         selected = QFileDialog.getExistingDirectory(self, "Select Download Directory", current)
         if selected:
             self.dir_input.setText(selected)
+
+    def _browse_dosbox_path(self):
+        current = self.dosbox_input.text() or os.path.expanduser("~")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select DOSBox Executable",
+            current,
+            "DOSBox Executable (*.exe);;All Files (*.*)"
+        )
+        if file_path:
+            self.dosbox_input.setText(file_path)
 
     def _test_credentials(self):
         acc = self.access_input.text().strip()
@@ -300,6 +345,7 @@ class SettingsTab(QWidget):
         settings.max_concurrent_downloads = self.conc_spin.value()
         settings.chunk_size_kb = self.chunk_combo.currentData()
         settings.auto_resume_startup = self.auto_resume_cb.isChecked()
+        settings.dosbox_path = self.dosbox_input.text().strip()
         settings.save()
 
         self.save_msg_lbl.setText("Settings saved successfully! ✓")

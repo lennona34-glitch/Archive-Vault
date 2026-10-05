@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import subprocess
 import sys
 from urllib.parse import urlparse
@@ -132,3 +133,60 @@ def open_with_7zip(file_path: str) -> bool:
         except Exception:
             return False
     return False
+
+def get_dosbox_path() -> str | None:
+    """Find DOSBox or retro emulator executable on the user's system."""
+    try:
+        from archivevault.core.settings import settings
+        if getattr(settings, "dosbox_path", None) and os.path.exists(settings.dosbox_path):
+            return settings.dosbox_path
+    except Exception:
+        pass
+
+    user_home = os.path.expanduser("~")
+    candidates = [
+        os.path.join(user_home, "LaunchBox", "ThirdParty", "DOSBox", "DOSBox.exe"),
+        r"C:\Program Files\DOSBox-0.74-3\DOSBox.exe",
+        r"C:\Program Files (x86)\DOSBox-0.74-3\DOSBox.exe",
+        r"C:\Program Files\DOSBox-0.74\DOSBox.exe",
+        r"C:\Program Files (x86)\DOSBox-0.74\DOSBox.exe",
+        r"C:\Program Files\DOSBox\DOSBox.exe",
+        r"C:\Program Files (x86)\DOSBox\DOSBox.exe",
+        r"C:\DOSBox\DOSBox.exe",
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+
+    for name in ["dosbox", "dosbox-x", "dosbox-staging"]:
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+def launch_local_dosbox(file_path: str) -> bool:
+    """Launch a local DOS game, executable, or directory in DOSBox."""
+    exe = get_dosbox_path()
+    abs_path = os.path.abspath(file_path)
+    if not os.path.exists(abs_path):
+        return False
+
+    if exe and os.path.exists(exe):
+        try:
+            if os.path.isdir(abs_path):
+                subprocess.Popen([exe, "-c", f'mount c "{abs_path}"', "-c", "c:"])
+            elif abs_path.lower().endswith(('.exe', '.com', '.bat')):
+                game_dir = os.path.dirname(abs_path)
+                file_name = os.path.basename(abs_path)
+                subprocess.Popen([exe, "-c", f'mount c "{game_dir}"', "-c", "c:", "-c", file_name])
+            elif abs_path.lower().endswith('.conf'):
+                subprocess.Popen([exe, "-conf", abs_path])
+            else:
+                game_dir = os.path.dirname(abs_path)
+                subprocess.Popen([exe, "-c", f'mount c "{game_dir}"', "-c", "c:"])
+            return True
+        except Exception as e:
+            print(f"[DOSBox] Launch error: {e}")
+            return False
+    return False
+

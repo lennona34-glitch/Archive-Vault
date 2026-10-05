@@ -576,6 +576,13 @@ class SearchTab(QWidget):
             page=1
         )
 
+    def select_category(self, key: str):
+        """Programmatically select a category pill and load its feed."""
+        if key in self.pills:
+            for k, p in self.pills.items():
+                p.setChecked(k == key)
+            self._load_curated_collection(key)
+
     def _on_search_clicked(self):
         text = self.search_input.text().strip()
         if not text:

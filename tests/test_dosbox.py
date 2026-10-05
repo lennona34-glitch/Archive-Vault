@@ -39,7 +39,21 @@ class TestDOSBoxIntegration(unittest.TestCase):
     def test_main_window_dosbox_signal(self):
         window = MainWindow()
         self.assertTrue(hasattr(window, "_launch_dosbox_player"))
+        self.assertTrue(hasattr(window, "arcade_tab"))
+        self.assertTrue(hasattr(window, "btn_arcade"))
+        self.assertEqual(window.pages.count(), 5)
         window.close()
+
+    def test_arcade_tab_initialization(self):
+        from archivevault.ui.arcade_tab import ArcadeTab
+        from archivevault.core.utils import get_dosbox_path
+        tab = ArcadeTab()
+        self.assertIsNotNone(tab.table)
+        self.assertIsNotNone(tab.btn_load_pc)
+        self.assertIsNotNone(tab.btn_open_folder)
+        # Verify DOSBox detection helper runs without error
+        path = get_dosbox_path()
+        self.assertTrue(path is None or isinstance(path, str))
 
 if __name__ == "__main__":
     unittest.main()

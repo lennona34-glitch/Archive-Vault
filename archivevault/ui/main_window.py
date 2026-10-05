@@ -26,6 +26,7 @@ from archivevault.core.downloader import (
 )
 from archivevault.core.settings import settings
 from archivevault.core.utils import format_size, format_speed
+from archivevault.ui.arcade_tab import ArcadeTab
 from archivevault.ui.audio_player import AudioPlayerWidget
 from archivevault.ui.downloads_tab import DownloadsTab, VIDEO_EXTENSIONS
 from archivevault.ui.item_tab import ItemTab
@@ -203,10 +204,16 @@ class MainWindow(QMainWindow):
         self.nav_group.addButton(self.btn_downloads, 2)
         side_layout.addWidget(self.btn_downloads)
 
+        self.btn_arcade = QPushButton("🕹️  DOSBox Arcade")
+        self.btn_arcade.setObjectName("navBtn")
+        self.btn_arcade.setCheckable(True)
+        self.nav_group.addButton(self.btn_arcade, 3)
+        side_layout.addWidget(self.btn_arcade)
+
         self.btn_settings = QPushButton("⚙️  Settings")
         self.btn_settings.setObjectName("navBtn")
         self.btn_settings.setCheckable(True)
-        self.nav_group.addButton(self.btn_settings, 3)
+        self.nav_group.addButton(self.btn_settings, 4)
         side_layout.addWidget(self.btn_settings)
 
         side_layout.addStretch(1)
@@ -268,12 +275,14 @@ class MainWindow(QMainWindow):
         self.search_tab = SearchTab()
         self.item_tab = ItemTab()
         self.downloads_tab = DownloadsTab()
+        self.arcade_tab = ArcadeTab()
         self.settings_tab = SettingsTab()
 
         self.pages.addWidget(self.search_tab)     # Index 0
         self.pages.addWidget(self.item_tab)       # Index 1
         self.pages.addWidget(self.downloads_tab)  # Index 2
-        self.pages.addWidget(self.settings_tab)   # Index 3
+        self.pages.addWidget(self.arcade_tab)     # Index 3
+        self.pages.addWidget(self.settings_tab)   # Index 4
 
         content_layout.addWidget(self.pages, stretch=1)
 
@@ -310,6 +319,9 @@ class MainWindow(QMainWindow):
         self.downloads_tab.play_media_requested.connect(self.play_audio)
         self.downloads_tab.play_video_requested.connect(self.play_video)
         self.downloads_tab.play_dosbox_requested.connect(self._launch_dosbox_player)
+        self.arcade_tab.play_dosbox_requested.connect(self._launch_dosbox_player)
+        self.arcade_tab.inspect_item_requested.connect(self._navigate_to_item)
+        self.arcade_tab.browse_retro_requested.connect(self._browse_retro_games)
         self.audio_player.playback_state_changed.connect(self._on_audio_playback_changed)
         self.audio_player.track_changed.connect(self._on_track_changed)
         download_manager.queue_updated.connect(self._on_queue_updated)
@@ -436,7 +448,16 @@ class MainWindow(QMainWindow):
 
     def _navigate_to_settings(self):
         self.btn_settings.setChecked(True)
+        self.pages.setCurrentIndex(4)
+
+    def _navigate_to_arcade(self):
+        self.btn_arcade.setChecked(True)
         self.pages.setCurrentIndex(3)
+
+    def _browse_retro_games(self):
+        self.btn_search.setChecked(True)
+        self.pages.setCurrentIndex(0)
+        self.search_tab.select_category("games")
 
     def _navigate_back_to_browse(self):
         self.btn_search.setChecked(True)
