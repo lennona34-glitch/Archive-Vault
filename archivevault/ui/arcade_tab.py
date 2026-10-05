@@ -42,14 +42,6 @@ RETRO_FILE_EXTENSIONS = (
 # Legendary instant-play classics from the Internet Archive
 CURATED_CLASSICS = [
     {
-        "id": "msdos_Doom_1993",
-        "title": "Doom (1993)",
-        "platform": "MS-DOS",
-        "badge_color": "#065f46",
-        "desc": "The legendary sci-fi FPS that redefined video games forever.",
-        "icon": "🔫"
-    },
-    {
         "id": "msdos_Prince_of_Persia_1990",
         "title": "Prince of Persia (1990)",
         "platform": "MS-DOS",
@@ -58,62 +50,129 @@ CURATED_CLASSICS = [
         "icon": "🗡️"
     },
     {
-        "id": "msdos_The_Secret_of_Monkey_Island_1990",
-        "title": "Monkey Island (1990)",
-        "platform": "MS-DOS",
-        "badge_color": "#065f46",
-        "desc": "LucasArts' iconic pirate point-and-click comedy adventure.",
-        "icon": "🏴‍☠️"
-    },
-    {
-        "id": "msdos_SimCity_2000_1993",
-        "title": "SimCity 2000 (1993)",
-        "platform": "MS-DOS",
-        "badge_color": "#065f46",
-        "desc": "Maxis' isometric city-building and urban planning simulation.",
-        "icon": "🏙️"
-    },
-    {
         "id": "msdos_Wolfenstein_3D_1992",
         "title": "Wolfenstein 3D (1992)",
         "platform": "MS-DOS",
         "badge_color": "#065f46",
-        "desc": "The trailblazing grandfather of the first-person shooter genre.",
+        "desc": "Id Software's grandfather of the first-person shooter genre.",
         "icon": "🏰"
     },
     {
-        "id": "arcade_pacman",
-        "title": "Pac-Man (Arcade)",
-        "platform": "Arcade",
-        "badge_color": "#dc2626",
-        "desc": "Namco's immortal 1980 arcade maze chase classic.",
-        "icon": "🟡"
+        "id": "Doom-2",
+        "title": "Doom II: Hell on Earth (1994)",
+        "platform": "MS-DOS",
+        "badge_color": "#065f46",
+        "desc": "The legendary sci-fi FPS that redefined video games forever.",
+        "icon": "🔫"
     },
     {
-        "id": "arcade_sf2",
-        "title": "Street Fighter II",
-        "platform": "Arcade",
-        "badge_color": "#dc2626",
-        "desc": "Capcom's definitive competitive martial arts fighting game.",
-        "icon": "🥋"
+        "id": "msdos_Oregon_Trail_The_1990",
+        "title": "The Oregon Trail (1990)",
+        "platform": "MS-DOS",
+        "badge_color": "#065f46",
+        "desc": "MECC's timeless pioneer trail survival and resource simulation.",
+        "icon": "🏕️"
     },
     {
-        "id": "amstrad_cpc_games",
-        "title": "Amstrad CPC Classics",
-        "platform": "Amstrad CPC",
-        "badge_color": "#0891b2",
-        "desc": "8-bit European microcomputer gems, tape images and disc games.",
-        "icon": "💾"
+        "id": "msdos_SimCity_1989",
+        "title": "SimCity (1989)",
+        "platform": "MS-DOS",
+        "badge_color": "#065f46",
+        "desc": "Will Wright's iconic urban planning and city simulator.",
+        "icon": "🏙️"
     },
     {
         "id": "msdos_Golden_Axe_1990",
         "title": "Golden Axe (1990)",
         "platform": "MS-DOS",
         "badge_color": "#065f46",
-        "desc": "Sega's high-fantasy arcade beat 'em up ported to MS-DOS.",
+        "desc": "Sega's classic high-fantasy hack-and-slash arcade adventure.",
         "icon": "⚔️"
+    },
+    {
+        "id": "msdos_Pac-Man_1983",
+        "title": "Pac-Man (MS-DOS 1983)",
+        "platform": "MS-DOS",
+        "badge_color": "#065f46",
+        "desc": "The official IBM PC port of Namco's immortal arcade maze runner.",
+        "icon": "🟡"
+    },
+    {
+        "id": "msdos_Disneys_Aladdin_1994",
+        "title": "Disney's Aladdin (1994)",
+        "platform": "MS-DOS",
+        "badge_color": "#065f46",
+        "desc": "Virgin Interactive's beloved Arabian Nights side-scrolling platformer.",
+        "icon": "🧞"
+    },
+    {
+        "id": "arcade_outrun",
+        "title": "Out Run (Arcade 1986)",
+        "platform": "Arcade",
+        "badge_color": "#dc2626",
+        "desc": "Yu Suzuki & Sega's legendary Ferrari Testarossa arcade racer.",
+        "icon": "🏎️"
+    },
+    {
+        "id": "arcade_1941",
+        "title": "1941: Counter Attack (Arcade)",
+        "platform": "Arcade",
+        "badge_color": "#dc2626",
+        "desc": "Capcom's classic vertical-scrolling WWII aircraft shooter.",
+        "icon": "✈️"
+    },
+    {
+        "id": "arcade_10yard",
+        "title": "10-Yard Fight (Arcade)",
+        "platform": "Arcade",
+        "badge_color": "#dc2626",
+        "desc": "Irem's pioneering American football coin-op arcade game.",
+        "icon": "🏈"
+    },
+    {
+        "id": "arcade_defender",
+        "title": "Defender (Arcade 1981)",
+        "platform": "Arcade",
+        "badge_color": "#dc2626",
+        "desc": "Williams' blistering twin-stick side-scrolling space defender.",
+        "icon": "🚀"
+    },
+    {
+        "id": "lemmings_cpc",
+        "title": "Lemmings (Amstrad CPC)",
+        "platform": "Amstrad CPC",
+        "badge_color": "#0891b2",
+        "desc": "DMA Design's iconic puzzle-strategy game ported to the CPC 6128.",
+        "icon": "🐹"
+    },
+    {
+        "id": "Oh_Mummy_1984_Amsoft",
+        "title": "Oh Mummy!! (Amstrad CPC)",
+        "platform": "Amstrad CPC",
+        "badge_color": "#0891b2",
+        "desc": "The quintessential Amstrad CPC 464 pack-in pyramid maze game.",
+        "icon": "🏺"
     }
 ]
+
+KNOWN_IA_ARCADE_ROMS = {
+    "1941": ("arcade_1941", "1941: Counter Attack"),
+    "10yard": ("arcade_10yard", "10-Yard Fight"),
+    "outrun": ("arcade_outrun", "Out Run"),
+    "defender": ("arcade_defender", "Defender"),
+    "joust": ("arcade_joust", "Joust"),
+    "berzerk": ("arcade_berzerk", "Berzerk"),
+    "mrdo": ("arcade_mrdo", "Mr. Do!"),
+    "qbert": ("arcade_qbert", "Q*Bert"),
+    "astrob": ("arcade_astrob", "Astro Blaster"),
+    "paperboy": ("arcade_paperboy", "Paperboy"),
+    "galaxian": ("arcade_galaxian", "Galaxian"),
+    "frogger": ("arcade_frogger", "Frogger"),
+    "digdug": ("arcade_digdug", "Dig Dug"),
+    "centiped": ("arcade_centiped", "Centipede"),
+    "dkong": ("arcade_dkong", "Donkey Kong"),
+    "mario": ("arcade_mario", "Mario Bros"),
+}
 
 class ArcadeTab(QWidget):
     """
@@ -591,40 +650,56 @@ class ArcadeTab(QWidget):
         """Handle user launching an Arcade / MAME ROM with clear explanations and choices."""
         lb_exe = get_launchbox_path()
         has_lb = bool(lb_exe and os.path.exists(lb_exe))
+        rom_stem = os.path.splitext(fname)[0].lower()
+
+        verified_arcade = KNOWN_IA_ARCADE_ROMS.get(rom_stem)
 
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("Arcade ROM Detected (MAME)")
         msg_box.setIcon(QMessageBox.Icon.Information)
 
-        lb_text = f"<br>• <b>LaunchBox is installed on your PC:</b> You can open LaunchBox to import and run your MAME arcade set with dedicated arcade cores." if has_lb else ""
+        if verified_arcade:
+            ia_id, ia_title = verified_arcade
+            html_text = f"""
+            <div style='font-size: 13px; line-height: 1.5;'>
+                <h3 style='margin: 0 0 8px 0; color: #f43f5e;'>🕹️ Arcade Cabinet ROM: {ia_title}</h3>
+                <p><b>{fname}</b> matches verified Internet Arcade game <b>{ia_title}</b>!</p>
+                <p style='color: #a1a1aa;'>
+                    You can stream and play this arcade classic directly inside ArchiveVault via WebAssembly MAME, or launch via LaunchBox.
+                </p>
+                <p><b>Choose an action:</b></p>
+            </div>
+            """
+        else:
+            lb_hint = "LaunchBox is installed on your PC and can import and launch this ROM directly with local MAME / RetroArch cores." if has_lb else "Install LaunchBox or standalone MAME to play this arcade ROM."
+            html_text = f"""
+            <div style='font-size: 13px; line-height: 1.5;'>
+                <h3 style='margin: 0 0 8px 0; color: #f43f5e;'>🕹️ Offline Arcade ROM (MAME)</h3>
+                <p><b>{fname}</b> is an offline Arcade Machine ROM from your downloaded <i>{parent_dir}</i> collection.</p>
+                <p style='color: #a1a1aa;'>
+                    • <b>Why online browser player won't work:</b> This specific offline ROM dump is not currently available as a pre-configured WebAssembly game on Internet Archive.<br><br>
+                    • <b>How to play:</b> {lb_hint}
+                </p>
+                <p><b>Choose an action:</b></p>
+            </div>
+            """
 
-        html_text = f"""
-        <div style='font-size: 13px; line-height: 1.5;'>
-            <h3 style='margin: 0 0 8px 0; color: #f43f5e;'>🕹️ Arcade Cabinet ROM (MAME)</h3>
-            <p><b>{fname}</b> is an <b>Arcade Machine ROM</b> (from <i>{parent_dir}</i>), not an MS-DOS PC game.</p>
-            <p style='color: #a1a1aa;'>
-                <b>Why DOSBox won't run this:</b><br>
-                DOSBox strictly emulates IBM PC / MS-DOS computers (x86 CPU, Sound Blaster, VGA). It cannot emulate arcade cabinet hardware boards (Capcom CPS, Neo-Geo, custom Z80/68000 arcade processors).
-            </p>
-            {lb_text}
-            <p><b>Choose an action:</b></p>
-        </div>
-        """
         msg_box.setText(html_text)
 
-        btn_ia = msg_box.addButton("🌐 Play In-App (Online MAME)", QMessageBox.ButtonRole.ActionRole)
-        btn_lb = msg_box.addButton("🚀 Open in LaunchBox", QMessageBox.ButtonRole.ActionRole) if has_lb else None
+        btn_ia = None
+        if verified_arcade:
+            btn_ia = msg_box.addButton("🌐 Play In-App (Online MAME)", QMessageBox.ButtonRole.ActionRole)
+        btn_lb = msg_box.addButton("🚀 Open in LaunchBox (Recommended)", QMessageBox.ButtonRole.ActionRole) if has_lb else None
         btn_folder = msg_box.addButton("📂 Open ROM Folder", QMessageBox.ButtonRole.ActionRole)
-        btn_dos = msg_box.addButton("🎮 Mount in DOSBox Anyway", QMessageBox.ButtonRole.ActionRole)
+        btn_dos = msg_box.addButton("🎮 Mount in DOSBox", QMessageBox.ButtonRole.ActionRole)
         btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
 
         msg_box.exec()
         clicked = msg_box.clickedButton()
 
-        if clicked == btn_ia:
-            rom_stem = os.path.splitext(fname)[0]
-            ident = parent_dir if parent_dir and "mame" in parent_dir.lower() else f"arcade_{rom_stem}"
-            self.play_dosbox_requested.emit(ident, f"Arcade: {rom_stem.upper()}")
+        if btn_ia and clicked == btn_ia:
+            ia_id, ia_title = verified_arcade
+            self.play_dosbox_requested.emit(ia_id, f"Arcade: {ia_title}")
         elif has_lb and clicked == btn_lb:
             launch_launchbox(file_path)
         elif clicked == btn_folder:

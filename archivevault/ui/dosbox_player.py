@@ -30,6 +30,17 @@ from PyQt6.QtWidgets import (
 
 def detect_retro_platform(identifier: str) -> dict:
     id_lower = identifier.lower()
+
+    # Asset / Non-playable theme check
+    if any(k in id_lower for k in ("emulationstation-assets", "theme", "artwork", "media", "video_snap", "marquee", "wheel")):
+        return {
+            "name": "Media / Assets",
+            "badge": "MEDIA",
+            "badge_color": "#475569",
+            "default_cmd": "",
+            "tip": "Artwork / UI assets for frontends and themes."
+        }
+
     if any(k in id_lower for k in ("cpc", "amstrad", "6128", "464", "664")):
         default_cmd = "RUN\"GOBLINS" if "goblins" in id_lower else "RUN\"DISC"
         return {
@@ -47,7 +58,7 @@ def detect_retro_platform(identifier: str) -> dict:
             "default_cmd": "LOAD \"\"",
             "tip": "ZX Spectrum: Press J for LOAD, then Symbol Shift + P twice for \"\" and Enter!"
         }
-    if any(k in id_lower for k in ("c64", "commodore", "vic20")):
+    if any(k in id_lower for k in ("c64", "commodore", "vic20", "plus-4")):
         return {
             "name": "Commodore 64",
             "badge": "C64",
@@ -63,13 +74,21 @@ def detect_retro_platform(identifier: str) -> dict:
             "default_cmd": "",
             "tip": "Amiga: Insert floppy or let Workbench autoboot."
         }
-    if any(k in id_lower for k in ("arcade", "mame")):
+    if any(k in id_lower for k in ("arcade", "mame", "fbn", "fbneo", "neogeo", "capcom", "cps1", "cps2", "cps3")):
         return {
             "name": "Arcade",
             "badge": "ARCADE",
             "badge_color": "#dc2626",
             "default_cmd": "",
             "tip": "Arcade: Press 5 or 6 to insert coins, 1 or 2 for Player Start!"
+        }
+    if any(k in id_lower for k in ("snes", "super_nintendo", "sfc", "nes", "famico", "n64", "gba", "gameboy", "gbc", "genesis", "megadrive", "hearto")):
+        return {
+            "name": "Console",
+            "badge": "CONSOLE",
+            "badge_color": "#7c3aed",
+            "default_cmd": "",
+            "tip": "Console: Use gamepad or keyboard controls to play."
         }
     if any(k in id_lower for k in ("atari", "a2600", "a7800")):
         return {
@@ -1068,14 +1087,84 @@ class DOSBoxPlayerDialog(QDialog):
         """
         self.web_view.page().runJavaScript(js_code)
 
+    def _show_emulation_error_card(self, title: str, message: str):
+        """Display an actionable, stylish error card when an item has no online emulator."""
+        if self._autoboot_timer and self._autoboot_timer.isActive():
+            self._autoboot_timer.stop()
+
+        if hasattr(self, "loading_pbar"):
+            self.loading_pbar.hide()
+        if hasattr(self, "loading_status_lbl"):
+            self.loading_status_lbl.hide()
+
+        if not hasattr(self, "error_card"):
+            self.error_card = QFrame(self.loading_overlay)
+            self.error_card.setStyleSheet("""
+                QFrame {
+                    background-color: #18181b;
+                    border: 1px solid #ef4444;
+                    border-radius: 10px;
+                    padding: 20px;
+                    max-width: 520px;
+                }
+            """)
+            err_layout = QVBoxLayout(self.error_card)
+            err_layout.setSpacing(14)
+
+            self.err_badge = QLabel("❌ Online Emulation Not Found")
+            self.err_badge.setStyleSheet("color: #ef4444; font-size: 16px; font-weight: 800; background: transparent;")
+            self.err_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            err_layout.addWidget(self.err_badge)
+
+            self.err_msg_lbl = QLabel()
+            self.err_msg_lbl.setStyleSheet("color: #d4d4d8; font-size: 12px; line-height: 1.5; background: transparent;")
+            self.err_msg_lbl.setWordWrap(True)
+            err_layout.addWidget(self.err_msg_lbl)
+
+            btn_box = QHBoxLayout()
+            btn_box.setSpacing(10)
+            btn_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            from archivevault.core.utils import get_launchbox_path, launch_launchbox
+            lb_path = get_launchbox_path()
+            if lb_path:
+                self.btn_err_lb = QPushButton("Open LaunchBox 🚀")
+                self.btn_err_lb.setStyleSheet("background-color: #3b82f6; color: #ffffff; font-weight: 700; padding: 6px 14px; border-radius: 5px;")
+                self.btn_err_lb.clicked.connect(lambda: (launch_launchbox(), self.close()))
+                btn_box.addWidget(self.btn_err_lb)
+
+            self.btn_err_web = QPushButton("View on Archive.org 🌐")
+            self.btn_err_web.setStyleSheet("background-color: #27272a; color: #60a5fa; font-weight: 600; padding: 6px 12px; border: 1px solid #3f3f46; border-radius: 5px;")
+            self.btn_err_web.clicked.connect(self._open_in_browser)
+            btn_box.addWidget(self.btn_err_web)
+
+            self.btn_err_close = QPushButton("Close ✕")
+            self.btn_err_close.setStyleSheet("background-color: #3f3f46; color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 5px;")
+            self.btn_err_close.clicked.connect(self.close)
+            btn_box.addWidget(self.btn_err_close)
+
+            err_layout.addLayout(btn_box)
+            self.loading_overlay.layout().addWidget(self.error_card)
+
+        self.err_badge.setText(f"❌ {title}")
+        self.err_msg_lbl.setText(message)
+        self.error_card.show()
+        self.loading_overlay.show()
+        self.loading_overlay.raise_()
+
     def _load_game(self):
         if self._autoboot_timer and self._autoboot_timer.isActive():
             self._autoboot_timer.stop()
         if hasattr(self, "loading_overlay"):
             self.loading_overlay.show()
             self.loading_overlay.raise_()
+        if hasattr(self, "loading_pbar"):
+            self.loading_pbar.show()
         if hasattr(self, "loading_status_lbl"):
-            self.loading_status_lbl.setText("⚡ Preparing DOSBox WebAssembly Engine...")
+            self.loading_status_lbl.show()
+            self.loading_status_lbl.setText(f"⚡ Preparing {self.platform_info['name']} WebAssembly Engine...")
+        if hasattr(self, "error_card"):
+            self.error_card.hide()
         embed_url = f"https://archive.org/embed/{self.identifier}"
         self.loading_bar.show()
         self.web_view.setUrl(QUrl(embed_url))
@@ -1090,6 +1179,14 @@ class DOSBoxPlayerDialog(QDialog):
             self._apply_easy_crt()
             self._apply_aspect_mode()
             self._start_autoboot_poller()
+        else:
+            self._show_emulation_error_card(
+                title="Page Load Failed",
+                message=(
+                    f"Could not connect to Internet Archive for <b>'{self.identifier}'</b>.<br><br>"
+                    "Please check your internet connection or verify this item on archive.org."
+                )
+            )
         self.web_view.setFocus()
 
     def _start_autoboot_poller(self):
@@ -1104,19 +1201,45 @@ class DOSBoxPlayerDialog(QDialog):
 
     def _poll_autoboot(self):
         self._autoboot_attempts += 1
-        if self._autoboot_attempts > 120:  # Allow up to 60 seconds for heavy OS/disk images (e.g. Win95) to boot
+        if self._autoboot_attempts > 120:  # Allow up to 60 seconds
             if self._autoboot_timer:
                 self._autoboot_timer.stop()
-            if hasattr(self, "loading_overlay"):
-                self.loading_overlay.hide()
+            self._show_emulation_error_card(
+                title="Emulation Timed Out",
+                message=(
+                    f"The game <b>'{self.identifier}'</b> did not start rendering within 60 seconds.<br><br>"
+                    "Internet Archive may be experiencing high server load, or this item may require local emulation."
+                )
+            )
             return
 
         def on_result(res):
             if not res:
+                if self._autoboot_attempts >= 15:
+                    self._show_emulation_error_card(
+                        title="Online Emulation Not Available",
+                        message=(
+                            f"<b>'{self.identifier}'</b> does not have an in-browser WebAssembly emulator configured on the Internet Archive.<br><br>"
+                            "Offline MAME and local ROMs should be played through <b>LaunchBox</b> with local arcade cores."
+                        )
+                    )
                 return
+
             if isinstance(res, dict):
                 status = res.get('status')
                 splash = res.get('splash')
+
+                if status == 'no_emulator' or res.get('is404'):
+                    if self._autoboot_attempts >= 8:  # give ~3.2 seconds
+                        self._show_emulation_error_card(
+                            title="Online Emulation Not Available",
+                            message=(
+                                f"<b>'{self.identifier}'</b> does not have an in-browser WebAssembly emulator on the Internet Archive.<br><br>"
+                                "This happens when opening an offline ROM file (like MAME non-merged zips) rather than a pre-configured Internet Arcade game."
+                            )
+                        )
+                        return
+
                 if splash and hasattr(self, 'loading_status_lbl'):
                     self.loading_status_lbl.setText(f"📥 {splash}")
                 if status == 'running':
@@ -1597,6 +1720,15 @@ class DOSBoxPlayerDialog(QDialog):
                 try {
                     var btn = document.getElementById('jsmessSS');
                     var can = document.getElementById('canvas');
+                    var splash = document.querySelector('.emularity-splash-screen');
+                    var emuWrap = document.getElementById('emulate') || document.querySelector('.ia-module');
+
+                    var hasEmu = !!(can || btn || splash || emuWrap || window.Module);
+                    var is404 = document.title.includes('404') || (document.body && (document.body.innerText.includes('does not exist') || document.body.innerText.includes('problem with your request') || document.body.innerText.includes('cannot be found')));
+
+                    if (!hasEmu) {
+                        return { status: 'no_emulator', is404: is404 };
+                    }
 
                     setupPointerLock();
                     fitCanvas();
@@ -1624,7 +1756,6 @@ class DOSBoxPlayerDialog(QDialog):
                         }
                     }
 
-                    var splash = document.querySelector('.emularity-splash-screen');
                     var splashText = splash ? (splash.innerText || splash.textContent || '').split('\\n')[0] : '';
                     return { status: 'waiting', splash: splashText };
                 } catch(e) {
