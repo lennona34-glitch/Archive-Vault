@@ -88,5 +88,30 @@ class TestDOSBoxIntegration(unittest.TestCase):
             found = find_dos_executable(tmpdir)
             self.assertEqual(found.lower(), "play.bat")
 
+    def test_detect_retro_platform_atari_st_and_microcomputers(self):
+        from archivevault.ui.dosbox_player import detect_retro_platform
+        from archivevault.ui.arcade_tab import RETRO_FILE_EXTENSIONS
+
+        # Verify Atari ST extensions are present
+        self.assertIn('.st', RETRO_FILE_EXTENSIONS)
+        self.assertIn('.msa', RETRO_FILE_EXTENSIONS)
+
+        # Verify detection
+        st_game = detect_retro_platform("Carrier_Command.st")
+        self.assertEqual(st_game["name"], "Atari ST")
+        self.assertEqual(st_game["badge"], "ATARI ST")
+
+        msa_game = detect_retro_platform("Speedball_2.msa")
+        self.assertEqual(msa_game["name"], "Atari ST")
+
+        amiga_game = detect_retro_platform("Lemmings.adf")
+        self.assertEqual(amiga_game["name"], "Amiga")
+
+        c64_game = detect_retro_platform("Giana_Sisters.d64")
+        self.assertEqual(c64_game["name"], "Commodore 64")
+
+        spectrum_game = detect_retro_platform("Manic_Miner.tap")
+        self.assertEqual(spectrum_game["name"], "ZX Spectrum")
+
 if __name__ == "__main__":
     unittest.main()

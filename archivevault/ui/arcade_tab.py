@@ -39,8 +39,20 @@ from archivevault.ui.dosbox_player import detect_retro_platform
 from archivevault.ui.mame_installer_dialog import LaunchBoxGuideDialog, MameInstallerDialog
 
 RETRO_FILE_EXTENSIONS = (
-    '.zip', '.exe', '.com', '.bat', '.iso', '.bin', '.cue', '.rom',
-    '.dsk', '.adf', '.cpr', '.chd', '.img', '.7z', '.tar', '.gz'
+    # MS-DOS PC & Archives
+    '.zip', '.exe', '.com', '.bat', '.iso', '.bin', '.cue', '.rom', '.img', '.7z', '.tar', '.gz',
+    # Atari ST (Floppy & Disk Images)
+    '.st', '.msa', '.stx', '.dim',
+    # Atari 8-Bit & Consoles
+    '.atr', '.xfd', '.atx', '.a26', '.a78',
+    # Amiga & Amstrad CPC
+    '.adf', '.ipf', '.hdf', '.dsk', '.cpr',
+    # Commodore 64 & VIC-20
+    '.d64', '.t64', '.crt', '.prg', '.g64',
+    # ZX Spectrum
+    '.tap', '.tzx', '.z80', '.sna',
+    # Retro Consoles & Optical
+    '.smc', '.sfc', '.nes', '.gen', '.md', '.smd', '.chd', '.pbp'
 )
 
 # Legendary instant-play classics from the Internet Archive
@@ -644,7 +656,7 @@ class ArcadeTab(QWidget):
             self,
             "Select Game or ROM from Hard Drive",
             settings.download_dir,
-            "Retro Games & Executables (*.zip *.exe *.com *.bat *.iso *.bin *.cue *.rom *.dsk *.adf *.cpr *.7z);;All Files (*.*)"
+            "Retro Games & ROMs (*.st *.msa *.adf *.ipf *.dsk *.d64 *.tap *.zip *.exe *.com *.bat *.iso *.bin *.cue *.rom *.cpr *.7z *.smc *.nes *.gen);;All Files (*.*)"
         )
         if not file_path:
             return
@@ -676,8 +688,8 @@ class ArcadeTab(QWidget):
             self._handle_arcade_rom_launch(file_path, fname, parent_dir)
             return
 
-        # 2. MICROCOMPUTERS / CONSOLES (Amstrad CPC, Amiga, C64, ZX Spectrum, etc.)
-        if platform_name in ("Amstrad CPC", "ZX Spectrum", "Commodore 64", "Amiga", "Atari", "Apple II"):
+        # 2. MICROCOMPUTERS & CONSOLES (Atari ST, Amiga, C64, ZX Spectrum, Amstrad, etc.)
+        if platform_name in ("Atari ST", "Atari 8-bit", "Atari Console", "Atari", "Amstrad CPC", "ZX Spectrum", "Commodore 64", "Amiga", "Apple II", "Console"):
             self._handle_non_dos_microcomputer_launch(file_path, fname, platform_name)
             return
 
@@ -821,23 +833,29 @@ class ArcadeTab(QWidget):
             open_containing_folder(file_path)
 
     def _handle_non_dos_microcomputer_launch(self, file_path: str, fname: str, platform_name: str):
-        """Handle Amstrad CPC, Amiga, C64, ZX Spectrum files."""
+        """Handle Atari ST, Amiga, C64, ZX Spectrum, Amstrad CPC files."""
+        lb_exe = get_launchbox_path()
+        has_lb = bool(lb_exe and os.path.exists(lb_exe))
+
         msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(f"{platform_name} Game")
+        msg_box.setWindowTitle(f"{platform_name} Game Detected")
         msg_box.setIcon(QMessageBox.Icon.Information)
 
         html_text = f"""
         <div style='font-size: 13px; line-height: 1.5;'>
-            <h3 style='margin: 0 0 8px 0; color: #38bdf8;'>💾 {platform_name} Software</h3>
-            <p><b>{fname}</b> is a <b>{platform_name}</b> disk/tape image, not an MS-DOS PC executable.</p>
+            <h3 style='margin: 0 0 8px 0; color: #38bdf8;'>💾 {platform_name} Software: {fname}</h3>
+            <p><b>{fname}</b> is an authentic <b>{platform_name}</b> disk/tape image.</p>
             <p style='color: #a1a1aa;'>
-                DOSBox is an MS-DOS PC emulator. To play this {platform_name} title, you can stream it through ArchiveVault's built-in WebAssembly multi-system theater or open your local emulator.
+                • <b>Platform Architecture:</b> {platform_name} runs on specialized microcomputer hardware (e.g. Motorola 68000 / Z80 / 6502) rather than IBM PC MS-DOS.<br>
+                • <b>How to play:</b> You can stream it directly through ArchiveVault's built-in WebAssembly theater, or launch via LaunchBox with your favorite retro core (Hatari, Steem, RetroArch, etc.).
             </p>
+            <p><b>Choose an action:</b></p>
         </div>
         """
         msg_box.setText(html_text)
 
         btn_inapp = msg_box.addButton("🌐 Play in ArchiveVault Theater", QMessageBox.ButtonRole.ActionRole)
+        btn_lb = msg_box.addButton("🚀 Open in LaunchBox", QMessageBox.ButtonRole.ActionRole) if has_lb else None
         btn_open = msg_box.addButton("📂 Open File / Folder", QMessageBox.ButtonRole.ActionRole)
         btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
 
@@ -848,6 +866,8 @@ class ArcadeTab(QWidget):
             stem = os.path.splitext(fname)[0]
             ident = f"{platform_name.lower().replace(' ', '_')}_{stem}"
             self.play_dosbox_requested.emit(ident, f"{platform_name}: {stem}")
+        elif has_lb and clicked == btn_lb:
+            launch_launchbox(file_path)
         elif clicked == btn_open:
             open_containing_folder(file_path)
 

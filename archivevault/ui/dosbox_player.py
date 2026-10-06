@@ -41,7 +41,38 @@ def detect_retro_platform(identifier: str) -> dict:
             "tip": "Artwork / UI assets for frontends and themes."
         }
 
-    if any(k in id_lower for k in ("cpc", "amstrad", "6128", "464", "664")):
+    # Atari ST (Motorola 68000 16/32-bit computer: .st, .msa, .stx, .dim)
+    if id_lower.endswith((".st", ".msa", ".stx", ".dim")) or any(k in id_lower for k in ("atarist", "atari_st", "atari-st", "hatari", "steem", "tos_")):
+        return {
+            "name": "Atari ST",
+            "badge": "ATARI ST",
+            "badge_color": "#d97706",
+            "default_cmd": "",
+            "tip": "Atari ST: 16/32-bit Motorola 68000 GEM desktop / TOS floppy auto-boot."
+        }
+
+    # Atari 8-Bit (400 / 800 / XL / XE: .atr, .xfd, .atx)
+    if id_lower.endswith((".atr", ".xfd", ".atx")) or any(k in id_lower for k in ("atari800", "atari_800", "atari-800")):
+        return {
+            "name": "Atari 8-bit",
+            "badge": "ATARI 8-BIT",
+            "badge_color": "#b45309",
+            "default_cmd": "",
+            "tip": "Atari 8-bit: Auto-booting disk image."
+        }
+
+    # Atari Consoles (2600 / 7800 / Jaguar / Lynx)
+    if id_lower.endswith((".a26", ".a78")) or any(k in id_lower for k in ("a2600", "a7800", "atari2600", "atari7800", "jaguar", "lynx")):
+        return {
+            "name": "Atari Console",
+            "badge": "ATARI",
+            "badge_color": "#92400e",
+            "default_cmd": "",
+            "tip": "Atari Console: Press F2 for Game Reset / Start."
+        }
+
+    # Amstrad CPC
+    if id_lower.endswith((".dsk", ".cpr")) or any(k in id_lower for k in ("cpc", "amstrad", "6128", "464", "664")):
         default_cmd = "RUN\"GOBLINS" if "goblins" in id_lower else "RUN\"DISC"
         return {
             "name": "Amstrad CPC",
@@ -50,7 +81,9 @@ def detect_retro_platform(identifier: str) -> dict:
             "default_cmd": default_cmd,
             "tip": "Amstrad CPC: Click screen & type RUN\"<NAME> (or CAT for disk files) then press Enter!"
         }
-    if any(k in id_lower for k in ("zx_", "spectrum", "sinclair")):
+
+    # ZX Spectrum
+    if id_lower.endswith((".tap", ".tzx", ".z80", ".sna")) or any(k in id_lower for k in ("zx_", "spectrum", "sinclair")):
         return {
             "name": "ZX Spectrum",
             "badge": "ZX SPECTRUM",
@@ -58,7 +91,9 @@ def detect_retro_platform(identifier: str) -> dict:
             "default_cmd": "LOAD \"\"",
             "tip": "ZX Spectrum: Press J for LOAD, then Symbol Shift + P twice for \"\" and Enter!"
         }
-    if any(k in id_lower for k in ("c64", "commodore", "vic20", "plus-4")):
+
+    # Commodore 64
+    if id_lower.endswith((".d64", ".t64", ".crt", ".prg", ".g64")) or any(k in id_lower for k in ("c64", "commodore", "vic20", "plus-4")):
         return {
             "name": "Commodore 64",
             "badge": "C64",
@@ -66,7 +101,9 @@ def detect_retro_platform(identifier: str) -> dict:
             "default_cmd": "LOAD \"*\",8,1",
             "tip": "C64: Click screen & type LOAD \"*\",8,1 then Enter, then RUN!"
         }
-    if any(k in id_lower for k in ("amiga", "a500", "a1200")):
+
+    # Commodore Amiga
+    if id_lower.endswith((".adf", ".ipf", ".hdf")) or any(k in id_lower for k in ("amiga", "a500", "a1200")):
         return {
             "name": "Amiga",
             "badge": "AMIGA",
@@ -74,6 +111,8 @@ def detect_retro_platform(identifier: str) -> dict:
             "default_cmd": "",
             "tip": "Amiga: Insert floppy or let Workbench autoboot."
         }
+
+    # Arcade (MAME / FBNeo)
     if any(k in id_lower for k in ("arcade", "mame", "fbn", "fbneo", "neogeo", "capcom", "cps1", "cps2", "cps3")):
         return {
             "name": "Arcade",
@@ -82,7 +121,9 @@ def detect_retro_platform(identifier: str) -> dict:
             "default_cmd": "",
             "tip": "Arcade: Press 5 or 6 to insert coins, 1 or 2 for Player Start!"
         }
-    if any(k in id_lower for k in ("snes", "super_nintendo", "sfc", "nes", "famico", "n64", "gba", "gameboy", "gbc", "genesis", "megadrive", "hearto")):
+
+    # Consoles (SNES, NES, Genesis, Game Boy, GBA, etc.)
+    if id_lower.endswith((".smc", ".sfc", ".nes", ".gen", ".md", ".smd", ".pbp")) or any(k in id_lower for k in ("snes", "super_nintendo", "sfc", "nes", "famico", "n64", "gba", "gameboy", "gbc", "genesis", "megadrive", "hearto")):
         return {
             "name": "Console",
             "badge": "CONSOLE",
@@ -90,7 +131,9 @@ def detect_retro_platform(identifier: str) -> dict:
             "default_cmd": "",
             "tip": "Console: Use gamepad or keyboard controls to play."
         }
-    if any(k in id_lower for k in ("atari", "a2600", "a7800")):
+
+    # Generic Atari fallback
+    if "atari" in id_lower:
         return {
             "name": "Atari",
             "badge": "ATARI",
@@ -98,6 +141,8 @@ def detect_retro_platform(identifier: str) -> dict:
             "default_cmd": "",
             "tip": "Atari: Press F2 for Game Reset / Start."
         }
+
+    # Apple II
     if any(k in id_lower for k in ("apple2", "appleii", "apple_")):
         return {
             "name": "Apple II",
