@@ -115,14 +115,184 @@ def open_file(file_path: str) -> bool:
 
 def get_7zip_path() -> str | None:
     """Find 7-Zip File Manager executable if installed."""
+    user_home = os.path.expanduser("~")
     candidates = [
         r"C:\Program Files\7-Zip\7zFM.exe",
         r"C:\Program Files (x86)\7-Zip\7zFM.exe",
+        os.path.join(user_home, "LaunchBox", "ThirdParty", "7-Zip", "7zFM.exe"),
+        os.path.join(user_home, "LaunchBox", "ThirdParty", "7-Zip", "7zG.exe"),
+        os.path.join(user_home, "LaunchBox", "ThirdParty", "7-Zip", "7z.exe"),
     ]
     for c in candidates:
         if c and os.path.exists(c):
             return c
     return None
+
+def get_7z_cli_path() -> str | None:
+    """Find 7z command-line executable (7z.exe) on the system or in LaunchBox."""
+    user_home = os.path.expanduser("~")
+    candidates = [
+        os.path.join(user_home, "LaunchBox", "ThirdParty", "7-Zip", "7z.exe"),
+        r"C:\Program Files\7-Zip\7z.exe",
+        r"C:\Program Files (x86)\7-Zip\7z.exe",
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return shutil.which("7z")
+
+def get_mame_info() -> dict:
+    """Return detailed metadata about MAME arcade emulator installation and its origin."""
+    try:
+        from archivevault.core.settings import settings
+        saved = getattr(settings, "mame_path", "").strip()
+        if saved.lower() == "disabled":
+            return {"path": None, "source": "Disabled", "is_launchbox": False}
+        if saved and os.path.exists(saved):
+            is_lb = "launchbox" in saved.lower()
+            return {"path": saved, "source": "LaunchBox" if is_lb else "Custom", "is_launchbox": is_lb}
+    except Exception:
+        pass
+
+    user_home = os.path.expanduser("~")
+    candidates = [
+        (os.path.join(user_home, ".archivevault", "emulators", "mame", "mame.exe"), "Portable (ArchiveVault)"),
+        (os.path.join(user_home, "LaunchBox", "Emulators", "MAME", "mame.exe"), "LaunchBox"),
+        (os.path.join(user_home, "LaunchBox", "Emulators", "MAME", "mame64.exe"), "LaunchBox"),
+        (os.path.join(user_home, "LaunchBox", "Emulators", "mame.exe"), "LaunchBox"),
+        (r"C:\mame\mame.exe", "System"),
+        (r"C:\mame\mame64.exe", "System"),
+        (r"C:\Program Files\MAME\mame.exe", "System"),
+        (r"C:\Program Files (x86)\MAME\mame.exe", "System"),
+    ]
+    for c, src in candidates:
+        if c and os.path.exists(c):
+            return {"path": c, "source": src, "is_launchbox": (src == "LaunchBox")}
+
+    for name in ["mame", "mame64"]:
+        found = shutil.which(name)
+        if found:
+            return {"path": found, "source": "System (PATH)", "is_launchbox": False}
+
+    return {"path": None, "source": "Not Found", "is_launchbox": False}
+
+def get_mame_path() -> str | None:
+    """Find MAME arcade emulator executable on the user's system."""
+    info = get_mame_info()
+    return info.get("path")
+
+def launch_mame_game(rom_path: str) -> bool:
+    """Launch an offline Arcade MAME ROM directly in MAME emulator."""
+    mame_exe = get_mame_path()
+    if not mame_exe or not os.path.exists(mame_exe):
+        return False
+
+    abs_rom = os.path.abspath(rom_path)
+    if not os.path.exists(abs_rom):
+        return False
+
+    rom_dir = os.path.dirname(abs_rom)
+    rom_stem = os.path.splitext(os.path.basename(abs_rom))[0]
+    mame_dir = os.path.dirname(mame_exe)
+
+    cmd = [mame_exe, rom_stem, "-rompath", rom_dir]
+    try:
+        subprocess.Popen(cmd, cwd=mame_dir)
+        return True
+    except Exception as e:
+        print(f"[MAME] Error launching game: {e}")
+        return False
+
+def install_portable_mame(progress_callback=None) -> tuple[bool, str]:
+    """
+    Download and extract official portable MAME (x64) into ~/.archivevault/emulators/mame.
+    progress_callback(percent: int, status_str: str)
+    Returns (success: bool, path_or_error: str).
+    """
+    import urllib.request
+    from archivevault.core.settings import settings
+
+    user_home = os.path.expanduser("~")
+    target_dir = os.path.join(user_home, ".archivevault", "emulators", "mame")
+    target_exe = os.path.join(target_dir, "mame.exe")
+
+    if os.path.exists(target_exe):
+        settings.mame_path = target_exe
+        settings.save()
+        return True, target_exe
+
+    os.makedirs(target_dir, exist_ok=True)
+    temp_installer = os.path.join(user_home, ".archivevault", "emulators", "mame_setup.exe")
+    download_url = "https://github.com/mamedev/mame/releases/download/mame0289/mame0289b_x64.exe"
+
+    try:
+        if progress_callback:
+            progress_callback(5, "Connecting to official MAME repository...")
+
+        req = urllib.request.Request(
+            download_url,
+            headers={"User-Agent": "ArchiveVault/1.0 (Windows NT 10.0; Win64; x64)"}
+        )
+        with urllib.request.urlopen(req) as resp, open(temp_installer, "wb") as out_f:
+            total_size = int(resp.headers.get("Content-Length", 87626249))
+            downloaded = 0
+            chunk_size = 256 * 1024
+
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                out_f.write(chunk)
+                downloaded += len(chunk)
+                if progress_callback:
+                    pct = int(10 + (downloaded / max(total_size, 1)) * 75)
+                    mb_cur = downloaded / (1024 * 1024)
+                    mb_tot = total_size / (1024 * 1024)
+                    progress_callback(min(pct, 85), f"Downloading MAME: {mb_cur:.1f} MB / {mb_tot:.1f} MB...")
+
+        if progress_callback:
+            progress_callback(88, "Extracting MAME arcade emulator files...")
+
+        seven_zip = get_7z_cli_path()
+        extracted = False
+
+        if seven_zip and os.path.exists(seven_zip):
+            proc = subprocess.run([seven_zip, "x", temp_installer, f"-o{target_dir}", "-y"], capture_output=True)
+            if proc.returncode == 0:
+                extracted = True
+
+        if not extracted:
+            proc = subprocess.run([temp_installer, f"-o{target_dir}", "-y"], capture_output=True)
+            if proc.returncode == 0:
+                extracted = True
+
+        try:
+            if os.path.exists(temp_installer):
+                os.remove(temp_installer)
+        except Exception:
+            pass
+
+        if os.path.exists(target_exe):
+            settings.mame_path = target_exe
+            settings.save()
+            if progress_callback:
+                progress_callback(100, "MAME installed successfully!")
+            return True, target_exe
+
+        for root, _, files in os.walk(target_dir):
+            for f in files:
+                if f.lower() in ("mame.exe", "mame64.exe"):
+                    found = os.path.join(root, f)
+                    settings.mame_path = found
+                    settings.save()
+                    if progress_callback:
+                        progress_callback(100, "MAME installed successfully!")
+                    return True, found
+
+        return False, "Extraction completed but mame.exe was not found in directory."
+
+    except Exception as e:
+        return False, f"Failed to install MAME: {e}"
 
 def open_with_7zip(file_path: str) -> bool:
     """Open an archive with 7-Zip File Manager."""

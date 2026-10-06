@@ -22,7 +22,8 @@ from PyQt6.QtWidgets import (
 
 from archivevault.core.api import ia_api
 from archivevault.core.settings import settings
-from archivevault.core.utils import get_dosbox_path
+from archivevault.core.utils import get_dosbox_path, get_mame_info, get_mame_path
+from archivevault.ui.mame_installer_dialog import MameInstallerDialog
 
 class CredentialTesterSignals(QObject):
     result = pyqtSignal(bool, str)
@@ -201,22 +202,23 @@ class SettingsTab(QWidget):
 
         layout.addWidget(pref_box)
 
-        # --- Section 3: Retro Gaming & DOSBox Emulation ---
+        # --- Section 3: Retro Gaming & Emulators (DOSBox & MAME) ---
         emu_box = QFrame()
         emu_box.setObjectName("card")
         emu_layout = QVBoxLayout(emu_box)
         emu_layout.setContentsMargins(18, 16, 18, 16)
         emu_layout.setSpacing(12)
 
-        emu_title = QLabel("🕹️ Retro Gaming & DOSBox Emulation")
+        emu_title = QLabel("🕹️ Retro Gaming & Emulators (DOSBox & MAME)")
         emu_title.setStyleSheet("font-size: 15px; font-weight: 700; color: #ffffff;")
         emu_layout.addWidget(emu_title)
 
-        emu_desc = QLabel("Set your local DOSBox or LaunchBox executable path for launching offline PC games and ROMs directly from the DOSBox Arcade tab.")
+        emu_desc = QLabel("Configure your local DOSBox and MAME Arcade executables for launching offline PC games and ROM collections directly from the Arcade tab.")
         emu_desc.setStyleSheet("color: #a1a1aa; font-size: 12px;")
         emu_desc.setWordWrap(True)
         emu_layout.addWidget(emu_desc)
 
+        # DOSBox Path
         row_dosbox = QHBoxLayout()
         dosbox_lbl = QLabel("DOSBox Path:")
         dosbox_lbl.setFixedWidth(130)
@@ -230,6 +232,27 @@ class SettingsTab(QWidget):
         browse_dosbox_btn.clicked.connect(self._browse_dosbox_path)
         row_dosbox.addWidget(browse_dosbox_btn)
         emu_layout.addLayout(row_dosbox)
+
+        # MAME Arcade Path
+        row_mame = QHBoxLayout()
+        mame_lbl = QLabel("MAME Arcade:")
+        mame_lbl.setFixedWidth(130)
+        row_mame.addWidget(mame_lbl)
+
+        self.mame_input = QLineEdit()
+        self.mame_input.setPlaceholderText("Auto-detected, LaunchBox, or portable path to mame.exe...")
+        row_mame.addWidget(self.mame_input)
+
+        browse_mame_btn = QPushButton("Browse... 📁")
+        browse_mame_btn.clicked.connect(self._browse_mame_path)
+        row_mame.addWidget(browse_mame_btn)
+
+        auto_mame_btn = QPushButton("⚡ Auto-Install MAME")
+        auto_mame_btn.setStyleSheet("background-color: #10b981; color: #ffffff; font-weight: 600;")
+        auto_mame_btn.setToolTip("Download and unpack official standalone MAME in 1 click")
+        auto_mame_btn.clicked.connect(self._auto_install_mame)
+        row_mame.addWidget(auto_mame_btn)
+        emu_layout.addLayout(row_mame)
 
         layout.addWidget(emu_box)
 
@@ -279,6 +302,7 @@ class SettingsTab(QWidget):
         self.conc_spin.setValue(settings.max_concurrent_downloads)
         self.auto_resume_cb.setChecked(settings.auto_resume_startup)
         self.dosbox_input.setText(settings.dosbox_path or get_dosbox_path() or "")
+        self.mame_input.setText(settings.mame_path or get_mame_path() or "")
 
         idx = self.chunk_combo.findData(settings.chunk_size_kb)
         if idx >= 0:
@@ -308,6 +332,22 @@ class SettingsTab(QWidget):
         )
         if file_path:
             self.dosbox_input.setText(file_path)
+
+    def _browse_mame_path(self):
+        current = self.mame_input.text() or os.path.expanduser("~")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select MAME Arcade Executable",
+            current,
+            "MAME Executable (*mame*.exe);;All Files (*.*)"
+        )
+        if file_path:
+            self.mame_input.setText(file_path)
+
+    def _auto_install_mame(self):
+        dlg = MameInstallerDialog(self)
+        dlg.installation_finished.connect(lambda path: self.mame_input.setText(path))
+        dlg.exec()
 
     def _test_credentials(self):
         acc = self.access_input.text().strip()
@@ -346,6 +386,7 @@ class SettingsTab(QWidget):
         settings.chunk_size_kb = self.chunk_combo.currentData()
         settings.auto_resume_startup = self.auto_resume_cb.isChecked()
         settings.dosbox_path = self.dosbox_input.text().strip()
+        settings.mame_path = self.mame_input.text().strip()
         settings.save()
 
         self.save_msg_lbl.setText("Settings saved successfully! ✓")

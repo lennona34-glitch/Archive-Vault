@@ -26,13 +26,17 @@ from archivevault.core.utils import (
     get_dosbox_info,
     get_dosbox_path,
     get_launchbox_path,
+    get_mame_info,
+    get_mame_path,
     launch_launchbox,
     launch_local_dosbox,
+    launch_mame_game,
     open_containing_folder,
     open_file,
     open_with_7zip,
 )
 from archivevault.ui.dosbox_player import detect_retro_platform
+from archivevault.ui.mame_installer_dialog import LaunchBoxGuideDialog, MameInstallerDialog
 
 RETRO_FILE_EXTENSIONS = (
     '.zip', '.exe', '.com', '.bat', '.iso', '.bin', '.cue', '.rom',
@@ -261,7 +265,7 @@ class ArcadeTab(QWidget):
         btn_row.addStretch(1)
         hero_layout.addLayout(btn_row)
 
-        # DOSBox Detection & Configuration Pill
+        # Emulator Status Card (DOSBox & MAME Arcade)
         self.dosbox_cfg_card = QFrame()
         self.dosbox_cfg_card.setStyleSheet("""
             QFrame {
@@ -271,33 +275,51 @@ class ArcadeTab(QWidget):
                 padding: 6px 12px;
             }
         """)
-        cfg_layout = QHBoxLayout(self.dosbox_cfg_card)
-        cfg_layout.setContentsMargins(6, 4, 6, 4)
-        cfg_layout.setSpacing(10)
+        cfg_layout = QVBoxLayout(self.dosbox_cfg_card)
+        cfg_layout.setContentsMargins(8, 6, 8, 6)
+        cfg_layout.setSpacing(6)
 
+        # Row 1: DOSBox
+        row_dosbox = QHBoxLayout()
+        row_dosbox.setSpacing(10)
         self.dosbox_status_lbl = QLabel()
         self.dosbox_status_lbl.setStyleSheet("font-size: 12px; color: #d4d4d8;")
-        cfg_layout.addWidget(self.dosbox_status_lbl, stretch=1)
-
-        self.btn_open_lb = QPushButton("LaunchBox 🚀")
-        self.btn_open_lb.setFixedSize(115, 28)
-        self.btn_open_lb.setStyleSheet("font-size: 11px; font-weight: 600; background-color: #3b82f6; color: #ffffff;")
-        self.btn_open_lb.setToolTip("Open LaunchBox to manage or play MAME arcade ROM collections")
-        self.btn_open_lb.clicked.connect(self._on_launch_lb)
-        cfg_layout.addWidget(self.btn_open_lb)
+        row_dosbox.addWidget(self.dosbox_status_lbl, stretch=1)
 
         self.btn_toggle_dosbox = QPushButton("Disable External")
-        self.btn_toggle_dosbox.setFixedSize(120, 28)
+        self.btn_toggle_dosbox.setFixedSize(120, 26)
         self.btn_toggle_dosbox.setStyleSheet("font-size: 11px; font-weight: 600;")
         self.btn_toggle_dosbox.setToolTip("Toggle between local DOSBox executable and ArchiveVault's built-in WebAssembly player")
         self.btn_toggle_dosbox.clicked.connect(self._on_toggle_disable_dosbox)
-        cfg_layout.addWidget(self.btn_toggle_dosbox)
+        row_dosbox.addWidget(self.btn_toggle_dosbox)
 
         btn_change_dosbox = QPushButton("Configure DOSBox...")
-        btn_change_dosbox.setFixedSize(130, 28)
+        btn_change_dosbox.setFixedSize(130, 26)
         btn_change_dosbox.setStyleSheet("font-size: 11px; font-weight: 600;")
         btn_change_dosbox.clicked.connect(self._on_configure_dosbox)
-        cfg_layout.addWidget(btn_change_dosbox)
+        row_dosbox.addWidget(btn_change_dosbox)
+        cfg_layout.addLayout(row_dosbox)
+
+        # Row 2: MAME Arcade
+        row_mame = QHBoxLayout()
+        row_mame.setSpacing(10)
+        self.mame_status_lbl = QLabel()
+        self.mame_status_lbl.setStyleSheet("font-size: 12px; color: #d4d4d8;")
+        row_mame.addWidget(self.mame_status_lbl, stretch=1)
+
+        self.btn_open_lb = QPushButton("LaunchBox 🚀")
+        self.btn_open_lb.setFixedSize(115, 26)
+        self.btn_open_lb.setStyleSheet("font-size: 11px; font-weight: 600; background-color: #3b82f6; color: #ffffff;")
+        self.btn_open_lb.setToolTip("Open LaunchBox frontend or view LaunchBox emulator setup guide")
+        self.btn_open_lb.clicked.connect(self._on_launchbox_action)
+        row_mame.addWidget(self.btn_open_lb)
+
+        self.btn_mame_action = QPushButton("⚡ Install MAME")
+        self.btn_mame_action.setFixedSize(130, 26)
+        self.btn_mame_action.setStyleSheet("font-size: 11px; font-weight: 600; background-color: #10b981; color: #ffffff;")
+        self.btn_mame_action.clicked.connect(self._on_mame_action)
+        row_mame.addWidget(self.btn_mame_action)
+        cfg_layout.addLayout(row_mame)
 
         self._update_dosbox_status_label()
 
@@ -439,7 +461,7 @@ class ArcadeTab(QWidget):
 
         if source == "Disabled":
             self.dosbox_status_lbl.setText(
-                "🎮 <b>DOSBox Mode:</b> <span style='color: #f59e0b;'>In-App WebAssembly Player</span> &nbsp;•&nbsp; External DOSBox disabled"
+                "🎮 <b>DOSBox:</b> <span style='color: #f59e0b;'>In-App WebAssembly Player</span> &nbsp;•&nbsp; External DOSBox disabled"
             )
             if hasattr(self, "btn_toggle_dosbox"):
                 self.btn_toggle_dosbox.setText("Enable DOSBox")
@@ -456,6 +478,25 @@ class ArcadeTab(QWidget):
             )
             if hasattr(self, "btn_toggle_dosbox"):
                 self.btn_toggle_dosbox.setText("Disable External")
+
+        # Update MAME Arcade status
+        mame_info = get_mame_info()
+        mame_path = mame_info.get("path")
+        if hasattr(self, "mame_status_lbl"):
+            if mame_path and os.path.exists(mame_path):
+                self.mame_status_lbl.setText(
+                    f"🕹️ <b>MAME Arcade:</b> <span style='color: #4ade80;'>Ready ({mame_info.get('source')})</span> &nbsp;•&nbsp; <code>{mame_path}</code>"
+                )
+                if hasattr(self, "btn_mame_action"):
+                    self.btn_mame_action.setText("Configure MAME...")
+                    self.btn_mame_action.setStyleSheet("font-size: 11px; font-weight: 600;")
+            else:
+                self.mame_status_lbl.setText(
+                    "🕹️ <b>MAME Arcade:</b> <span style='color: #f59e0b;'>Not Configured</span> &nbsp;•&nbsp; 1-Click portable setup available"
+                )
+                if hasattr(self, "btn_mame_action"):
+                    self.btn_mame_action.setText("⚡ Install MAME")
+                    self.btn_mame_action.setStyleSheet("font-size: 11px; font-weight: 600; background-color: #10b981; color: #ffffff;")
 
         lb_path = info.get("launchbox_path")
         if hasattr(self, "btn_open_lb"):
@@ -480,9 +521,38 @@ class ArcadeTab(QWidget):
             )
         self._update_dosbox_status_label()
 
-    def _on_launch_lb(self):
-        if not launch_launchbox():
-            QMessageBox.warning(self, "LaunchBox Not Found", "Could not launch LaunchBox. Please verify installation.")
+    def _on_launchbox_action(self):
+        mame_path = get_mame_path()
+        if not mame_path or not os.path.exists(mame_path):
+            dlg = LaunchBoxGuideDialog(self)
+            res = dlg.exec()
+            if res == 2:
+                self._on_mame_action()
+        else:
+            launch_launchbox()
+
+    def _on_mame_action(self):
+        mame_path = get_mame_path()
+        if mame_path and os.path.exists(mame_path):
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select MAME Arcade Executable",
+                os.path.dirname(mame_path),
+                "MAME Executable (*mame*.exe);;All Files (*.*)"
+            )
+            if file_path and os.path.exists(file_path):
+                settings.mame_path = file_path
+                settings.save()
+                self._update_dosbox_status_label()
+                QMessageBox.information(
+                    self,
+                    "MAME Configured",
+                    f"MAME Arcade executable successfully set to:\n{file_path}"
+                )
+        else:
+            dlg = MameInstallerDialog(self)
+            dlg.installation_finished.connect(lambda _: self._update_dosbox_status_label())
+            dlg.exec()
 
     def _on_configure_dosbox(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -647,7 +717,9 @@ class ArcadeTab(QWidget):
         open_file(file_path)
 
     def _handle_arcade_rom_launch(self, file_path: str, fname: str, parent_dir: str):
-        """Handle user launching an Arcade / MAME ROM with clear explanations and choices."""
+        """Handle user launching an Arcade / MAME ROM with direct MAME support and guides."""
+        mame_path = get_mame_path()
+        has_mame = bool(mame_path and os.path.exists(mame_path))
         lb_exe = get_launchbox_path()
         has_lb = bool(lb_exe and os.path.exists(lb_exe))
         rom_stem = os.path.splitext(fname)[0].lower()
@@ -655,30 +727,44 @@ class ArcadeTab(QWidget):
         verified_arcade = KNOWN_IA_ARCADE_ROMS.get(rom_stem)
 
         msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("Arcade ROM Detected (MAME)")
+        msg_box.setWindowTitle("Arcade ROM (MAME)")
         msg_box.setIcon(QMessageBox.Icon.Information)
 
-        if verified_arcade:
+        if has_mame:
+            mame_info = get_mame_info()
+            src = mame_info.get("source", "MAME")
+            html_text = f"""
+            <div style='font-size: 13px; line-height: 1.5;'>
+                <h3 style='margin: 0 0 8px 0; color: #10b981;'>🕹️ Arcade Cabinet ROM: {fname}</h3>
+                <p><b>{fname}</b> is ready to play in <b>MAME Arcade Emulator</b> ({src}).</p>
+                <p style='color: #a1a1aa;'>
+                    Click <b>Play in MAME Arcade</b> below to launch directly with authentic video scaling, sound, and arcade controller support.
+                </p>
+                <p><b>Choose an action:</b></p>
+            </div>
+            """
+        elif verified_arcade:
             ia_id, ia_title = verified_arcade
             html_text = f"""
             <div style='font-size: 13px; line-height: 1.5;'>
                 <h3 style='margin: 0 0 8px 0; color: #f43f5e;'>🕹️ Arcade Cabinet ROM: {ia_title}</h3>
                 <p><b>{fname}</b> matches verified Internet Arcade game <b>{ia_title}</b>!</p>
                 <p style='color: #a1a1aa;'>
-                    You can stream and play this arcade classic directly inside ArchiveVault via WebAssembly MAME, or launch via LaunchBox.
+                    You can play this arcade classic directly inside ArchiveVault via WebAssembly MAME, or install standalone MAME for offline play.
                 </p>
                 <p><b>Choose an action:</b></p>
             </div>
             """
         else:
-            lb_hint = "LaunchBox is installed on your PC and can import and launch this ROM directly with local MAME / RetroArch cores." if has_lb else "Install LaunchBox or standalone MAME to play this arcade ROM."
+            lb_hint = "LaunchBox is installed on your PC, but needs MAME enabled (Tools > Manage > Emulators > Add > Download MAME)." if has_lb else "Install MAME to run offline arcade ROMs."
             html_text = f"""
             <div style='font-size: 13px; line-height: 1.5;'>
                 <h3 style='margin: 0 0 8px 0; color: #f43f5e;'>🕹️ Offline Arcade ROM (MAME)</h3>
                 <p><b>{fname}</b> is an offline Arcade Machine ROM from your downloaded <i>{parent_dir}</i> collection.</p>
                 <p style='color: #a1a1aa;'>
-                    • <b>Why online browser player won't work:</b> This specific offline ROM dump is not currently available as a pre-configured WebAssembly game on Internet Archive.<br><br>
-                    • <b>How to play:</b> {lb_hint}
+                    • <b>MAME Required:</b> Arcade ROMs need the MAME emulator to run.<br>
+                    • <b>Setup Options:</b> Use ArchiveVault's <b>1-Click MAME Install</b> (~83 MB portable), or follow the 3-step LaunchBox setup guide.<br>
+                    • <i>{lb_hint}</i>
                 </p>
                 <p><b>Choose an action:</b></p>
             </div>
@@ -686,26 +772,53 @@ class ArcadeTab(QWidget):
 
         msg_box.setText(html_text)
 
+        btn_direct_mame = None
+        btn_install_mame = None
+        btn_lb = None
         btn_ia = None
+
+        if has_mame:
+            btn_direct_mame = msg_box.addButton("▶ Play in MAME Arcade (Direct)", QMessageBox.ButtonRole.ActionRole)
+        else:
+            btn_install_mame = msg_box.addButton("⚡ 1-Click Install MAME", QMessageBox.ButtonRole.ActionRole)
+
         if verified_arcade:
             btn_ia = msg_box.addButton("🌐 Play In-App (Online MAME)", QMessageBox.ButtonRole.ActionRole)
-        btn_lb = msg_box.addButton("🚀 Open in LaunchBox (Recommended)", QMessageBox.ButtonRole.ActionRole) if has_lb else None
+
+        if has_lb:
+            lb_btn_text = "🚀 LaunchBox" if has_mame else "🚀 LaunchBox (Setup Guide)"
+            btn_lb = msg_box.addButton(lb_btn_text, QMessageBox.ButtonRole.ActionRole)
+
         btn_folder = msg_box.addButton("📂 Open ROM Folder", QMessageBox.ButtonRole.ActionRole)
-        btn_dos = msg_box.addButton("🎮 Mount in DOSBox", QMessageBox.ButtonRole.ActionRole)
         btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
 
         msg_box.exec()
         clicked = msg_box.clickedButton()
 
-        if btn_ia and clicked == btn_ia:
+        if btn_direct_mame and clicked == btn_direct_mame:
+            success = launch_mame_game(file_path)
+            if not success:
+                QMessageBox.warning(self, "Launch Error", f"Could not launch MAME with {fname}. Check MAME configuration.")
+        elif btn_install_mame and clicked == btn_install_mame:
+            dlg = MameInstallerDialog(self)
+            def on_installed(path):
+                self._update_dosbox_status_label()
+                launch_mame_game(file_path)
+            dlg.installation_finished.connect(on_installed)
+            dlg.exec()
+        elif btn_ia and clicked == btn_ia:
             ia_id, ia_title = verified_arcade
             self.play_dosbox_requested.emit(ia_id, f"Arcade: {ia_title}")
         elif has_lb and clicked == btn_lb:
-            launch_launchbox(file_path)
+            if not has_mame:
+                dlg = LaunchBoxGuideDialog(self)
+                res = dlg.exec()
+                if res == 2:
+                    self._on_mame_action()
+            else:
+                launch_launchbox(file_path)
         elif clicked == btn_folder:
             open_containing_folder(file_path)
-        elif clicked == btn_dos:
-            launch_local_dosbox(file_path)
 
     def _handle_non_dos_microcomputer_launch(self, file_path: str, fname: str, platform_name: str):
         """Handle Amstrad CPC, Amiga, C64, ZX Spectrum files."""
