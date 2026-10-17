@@ -181,8 +181,56 @@ def get_mame_path() -> str | None:
     info = get_mame_info()
     return info.get("path")
 
+def ensure_mame_ini(mame_dir: str):
+    """Ensure mame.ini has mouse, wireless controller, and input settings configured."""
+    ini_path = os.path.join(mame_dir, "mame.ini")
+    desired = {
+        "mouse": "1",
+        "joystick": "1",
+        "joystickprovider": "winhybrid",
+        "skip_gameinfo": "1",
+        "paddle_device": "mouse",
+        "dial_device": "mouse",
+        "trackball_device": "mouse",
+        "lightgun_device": "mouse",
+        "ui_mouse": "1",
+        "window": "0",
+    }
+
+    if os.path.exists(ini_path):
+        try:
+            with open(ini_path, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+            new_lines = []
+            modified = False
+            for line in lines:
+                parts = line.split(None, 1)
+                if len(parts) >= 1 and parts[0] in desired:
+                    key = parts[0]
+                    val = desired[key]
+                    new_line = f"{key:<26}{val}\n"
+                    if line.strip() != new_line.strip():
+                        modified = True
+                    new_lines.append(new_line)
+                else:
+                    new_lines.append(line)
+            if modified:
+                with open(ini_path, "w", encoding="utf-8") as f:
+                    f.writelines(new_lines)
+        except Exception as e:
+            print(f"[MAME] Could not update mame.ini: {e}")
+    else:
+        mame_exe = os.path.join(mame_dir, "mame.exe")
+        if os.path.exists(mame_exe):
+            try:
+                subprocess.run([mame_exe, "-createconfig"], cwd=mame_dir, capture_output=True, timeout=5)
+            except Exception:
+                pass
+            if os.path.exists(ini_path):
+                ensure_mame_ini(mame_dir)
+
 def launch_mame_game(rom_path: str) -> bool:
-    """Launch an offline Arcade MAME ROM directly in MAME emulator."""
+    """Launch an offline Arcade MAME ROM directly in MAME emulator with mouse and wireless controller enabled."""
     mame_exe = get_mame_path()
     if not mame_exe or not os.path.exists(mame_exe):
         return False
@@ -195,7 +243,26 @@ def launch_mame_game(rom_path: str) -> bool:
     rom_stem = os.path.splitext(os.path.basename(abs_rom))[0]
     mame_dir = os.path.dirname(mame_exe)
 
-    cmd = [mame_exe, rom_stem, "-rompath", rom_dir]
+    try:
+        ensure_mame_ini(mame_dir)
+    except Exception:
+        pass
+
+    # Launch MAME with full mouse, wireless gamepad (XInput + DirectInput), and instant skip-gameinfo
+    cmd = [
+        mame_exe,
+        rom_stem,
+        "-rompath", rom_dir,
+        "-mouse",
+        "-joystick",
+        "-joystickprovider", "winhybrid",
+        "-skip_gameinfo",
+        "-paddle_device", "mouse",
+        "-dial_device", "mouse",
+        "-trackball_device", "mouse",
+        "-lightgun_device", "mouse",
+        "-ui_mouse"
+    ]
     try:
         subprocess.Popen(cmd, cwd=mame_dir)
         return True
@@ -388,7 +455,7 @@ fullscreen=false
 fulldouble=false
 fullresolution=desktop
 windowresolution=1280x960
-output=overlay
+output=openglnb
 autolock=true
 sensitivity=100
 waitonerror=true
@@ -444,7 +511,7 @@ disney=true
 
 [joystick]
 joysticktype=auto
-timed=true
+timed=false
 autofire=false
 swap34=false
 buttonwrap=false

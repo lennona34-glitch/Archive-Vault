@@ -441,19 +441,33 @@ class ArcadeTab(QWidget):
         guide_card.setObjectName("articleCard")
         guide_layout = QVBoxLayout(guide_card)
         guide_layout.setContentsMargins(22, 16, 22, 16)
-        guide_layout.setSpacing(10)
+        guide_layout.setSpacing(12)
 
-        guide_title = QLabel("⌨️ DOSBox Controls & Hotkeys Reference")
+        guide_title = QLabel("⌨️ DOSBox & MAME Arcade Controls & Gamepad Reference")
         guide_title.setStyleSheet("font-size: 15px; font-weight: 700; color: #38bdf8;")
         guide_layout.addWidget(guide_title)
 
         guide_html = """
         <div style="font-size: 12px; color: #d4d4d8; line-height: 1.6;">
-            <b>• Alt + Enter:</b> Toggle Fullscreen mode.<br>
-            <b>• Ctrl + F10:</b> Lock / Unlock mouse cursor to DOSBox window.<br>
-            <b>• Ctrl + F11 / F12:</b> Decrease / Increase CPU Cycles (Game Speed / Turbo).<br>
-            <b>• Ctrl + F9:</b> Quick terminate DOSBox session.<br>
-            <b>• Gamepad / Controller:</b> Plug in any Xbox, PlayStation, or USB controller. Left Stick / D-Pad controls direction, Right Stick controls mouse, and A/B/X/Y map to action buttons.
+            <div style="margin-bottom: 8px;">
+                <b style="color: #f59e0b; font-size: 13px;">🕹️ MAME Arcade Controls:</b><br>
+                <b>• Tab:</b> Open In-Game Configuration Menu (remap buttons, adjust input sensitivity, configure controllers).<br>
+                <b>• 5 / 6:</b> Insert Coin (Player 1 / Player 2).<br>
+                <b>• 1 / 2:</b> Start Game (Player 1 / Player 2).<br>
+                <b>• Arrow Keys / Gamepad Stick:</b> Directional controls / Arcade Joystick.<br>
+                <b>• Ctrl / Alt / Space (or Gamepad A / B / X):</b> Action buttons (Button 1, Button 2, Button 3).<br>
+                <b>• Mouse:</b> Enabled for trackball, dial, spinner, lightgun games, and menu navigation.<br>
+                <b>• Wireless Gamepads:</b> Xbox, Bluetooth & DirectInput controllers are automatically mapped via Windows Hybrid provider.<br>
+                <b>• Alt + Enter:</b> Toggle Fullscreen &nbsp;|&nbsp; <b>Esc:</b> Exit MAME.
+            </div>
+            <div style="border-top: 1px solid #334155; padding-top: 8px;">
+                <b style="color: #38bdf8; font-size: 13px;">💾 DOSBox & Retro Theater Controls:</b><br>
+                <b>• Mouse Capture:</b> Click anywhere inside the game window or canvas to lock mouse. Press <b>Ctrl + F10</b> to release mouse to desktop.<br>
+                <b>• Alt + Enter:</b> Toggle Fullscreen &nbsp;|&nbsp; <b>Ctrl + F9:</b> Quick exit DOSBox session.<br>
+                <b>• Ctrl + F11 / F12:</b> Decrease / Increase CPU Cycles (Game Speed / Turbo).<br>
+                <b>• Wireless / USB Gamepad:</b> Fully supported with drift-free polling (timed=false).<br>
+                <b>• DOS In-Game Controller Switch:</b> Games like <i>Prince of Persia</i> require pressing <b>Ctrl + J</b> in-game to switch to Joystick, or <b>Ctrl + K</b> for Keyboard!
+            </div>
         </div>
         """
         guide_lbl = QLabel(guide_html)

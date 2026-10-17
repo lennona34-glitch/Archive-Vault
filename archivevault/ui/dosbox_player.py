@@ -992,7 +992,7 @@ class DOSBoxPlayerDialog(QDialog):
                         border-radius: 4px;
                     """)
 
-            if changed and connected:
+            if connected:
                 payload = json.dumps(state)
                 self.web_view.page().runJavaScript(f"window.__av_controller_tick && window.__av_controller_tick({payload});")
         except Exception:
@@ -1696,6 +1696,10 @@ class DOSBoxPlayerDialog(QDialog):
                 if (target && !target.__av_mouse_bound) {
                     target.__av_mouse_bound = true;
                     target.addEventListener('click', function() {
+                        try {
+                            target.tabIndex = 1;
+                            target.focus();
+                        } catch(e) {}
                         if (target.requestPointerLock && document.pointerLockElement !== target) {
                             try { target.requestPointerLock(); } catch(e) {}
                         }
@@ -1787,6 +1791,12 @@ class DOSBoxPlayerDialog(QDialog):
                     if (isRendering) {
                         dismissStartOverlay();
                         fitCanvas();
+                        if (can) {
+                            try {
+                                can.tabIndex = 1;
+                                can.focus();
+                            } catch(e) {}
+                        }
                         return { status: 'running', w: can.width, h: can.height };
                     }
 
