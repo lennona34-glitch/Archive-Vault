@@ -30,12 +30,22 @@ from archivevault.core.utils import format_size
 from archivevault.ui.audio_player import AudioPlayerWidget
 from archivevault.ui.styles import get_mediatype_badge_color
 
+RETRO_GAME_EXTENSIONS = (
+    '.zip', '.7z', '.iso', '.bin', '.cue', '.chd', '.img', '.rom', '.exe', '.com', '.bat', '.wad',
+    '.st', '.msa', '.stx', '.dim',
+    '.atr', '.xfd', '.atx', '.a26', '.a78',
+    '.adf', '.ipf', '.hdf', '.dsk', '.cpr',
+    '.d64', '.t64', '.crt', '.prg', '.g64',
+    '.tap', '.tzx', '.z80', '.sna',
+    '.smc', '.sfc', '.nes', '.gen', '.md', '.smd', '.pbp'
+)
+
 CONTENT_EXTENSIONS = (
-    '.zip', '.iso', '.bin', '.cue', '.chd', '.img', '.rom', '.exe',
+    *RETRO_GAME_EXTENSIONS,
     '.mp4', '.mkv', '.avi', '.ogv', '.webm', '.mov', '.flv', '.wmv', '.m4v',
     '.mpg', '.mpeg', '.m2v', '.ts', '.vob', '.3gp',
     '.mp3', '.flac', '.ogg', '.wav', '.m4a', '.aac', '.opus', '.shn', '.mid', '.midi',
-    '.pdf', '.epub', '.djvu', '.cbr', '.cbz', '.tar', '.7z', '.gz'
+    '.pdf', '.epub', '.djvu', '.cbr', '.cbz', '.tar', '.gz'
 )
 
 AUDIO_EXTENSIONS = ('.mp3', '.flac', '.ogg', '.wav', '.m4a', '.aac', '.opus', '.wma', '.aiff', '.shn', '.mid', '.midi', '.wv', '.ape')
@@ -109,7 +119,7 @@ class CuratedFileCard(QFrame):
 
         # File icon according to extension
         fname = self.file_info["name"].lower()
-        if fname.endswith(('.zip', '.7z', '.iso', '.bin', '.rom', '.exe')):
+        if fname.endswith(RETRO_GAME_EXTENSIONS):
             icon_str = "🎮"
         elif fname.endswith(VIDEO_EXTENSIONS):
             icon_str = "🎬"
@@ -289,6 +299,7 @@ class ItemTab(QWidget):
         
         self._init_ui()
         self._setup_shortcuts()
+        self._populate_default_showcase()
 
     def _setup_shortcuts(self):
         # Escape or Backspace takes user back to browse when this tab is active
@@ -641,6 +652,67 @@ class ItemTab(QWidget):
         self.canvas_layout.addStretch(1)
         self.scroll_area.setWidget(self.canvas)
         outer_layout.addWidget(self.scroll_area, stretch=1)
+
+    def _populate_default_showcase(self):
+        """Populate default interactive dossier bars when Subject Dossier is opened fresh before selecting an item."""
+        self.id_pill.setText("🏛️ Featured Dossier Showcase")
+        self.mediatype_badge.setText("FEATURED VAULTS")
+        self.headline_label.setText("Featured Internet Archive Vaults & Quick-Start Dossiers")
+        self.author_line.setText("Select any item from Browse & Search, or launch one of our flagship preservation vaults below.")
+        self.meta_summary_label.setText("8 Flagship Vaults Ready")
+
+        welcome_html = """
+        <div style='line-height: 1.65; color: #d4d4d8; font-size: 13.5px;'>
+            <b>Welcome to the Subject Dossier.</b> Whenever you click an item in <b>Browse &amp; Search</b>, its complete
+            historical article, in-app emulator/cinema preview, and curated 1-click download files appear here.<br><br>
+            To get started immediately, click any of the flagship preservation bars below to load its full dossier!
+        </div>
+        """
+        self.article_browser.setHtml(welcome_html)
+        self.vault_sub.setText("Flagship Internet Archive vaults & classics — click any bar to inspect or play:")
+        self._clear_curated_cards()
+
+        showcase_items = [
+            ("🗡️", "Prince of Persia (MS-DOS, 1990)", "msdos_Prince_of_Persia_1990", "SOFTWARE / MS-DOS • Playable In-App & Download"),
+            ("🏎️", "Out Run (Sega Coin-Op Arcade, 1986)", "arcade_outrun", "ARCADE / MAME • Playable In-App & ROM Download"),
+            ("🕹️", "MAME 0.264 Complete ROMs (Non-Merged, No Login)", "mame-0.264-roms-non-merged", "ARCADE REPOSITORY • 40,000+ Standalone ROMs"),
+            ("🖥️", "TOSEC: Atari ST Complete Disk Image Archive (.ST / .MSA)", "Atari_ST_TOSEC_2012_04_23", "ATARI ST VAULT • Complete Disk Image Preservation"),
+            ("🖥️", "Commodore Amiga WHDLoad Games Archive", "Amiga_WHD_Games", "AMIGA VAULT • Curated Amiga Game Packages"),
+            ("🏕️", "The Oregon Trail (MS-DOS, 1990)", "msdos_Oregon_Trail_The_1990", "SOFTWARE / MS-DOS • Playable In-App & Download"),
+            ("🎬", "Night of the Living Dead (1968, 1080p Remaster)", "NightOfTheLivingDead_1080p", "FEATURE FILM • Stream In-App Cinema & Download"),
+            ("📖", "Byte Magazine - Volume 02 Number 09 (1977)", "byte-magazine-1977-09", "VINTAGE COMPUTING • Magazine Preservation"),
+        ]
+
+        for icon_str, title, ident, subtitle in showcase_items:
+            bar = QFrame()
+            bar.setObjectName("curatedCard")
+            bar_layout = QHBoxLayout(bar)
+            bar_layout.setContentsMargins(14, 10, 14, 10)
+            bar_layout.setSpacing(12)
+
+            ic = QLabel(icon_str)
+            ic.setStyleSheet("font-size: 20px;")
+            bar_layout.addWidget(ic)
+
+            info = QVBoxLayout()
+            info.setSpacing(2)
+            t_lbl = QLabel(title)
+            t_lbl.setStyleSheet("font-size: 13.5px; font-weight: 700; color: #f4f4f5;")
+            info.addWidget(t_lbl)
+
+            s_lbl = QLabel(f"{subtitle}  •  ID: {ident}")
+            s_lbl.setStyleSheet("font-size: 11px; color: #a1a1aa;")
+            info.addWidget(s_lbl)
+            bar_layout.addLayout(info, stretch=1)
+
+            open_btn = QPushButton("📖 Open Dossier ➔")
+            open_btn.setObjectName("primaryBtn")
+            open_btn.setFixedSize(145, 32)
+            open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            open_btn.clicked.connect(lambda _, i=ident: self.load_item(i))
+            bar_layout.addWidget(open_btn)
+
+            self.curated_cards_container.addWidget(bar)
 
     def load_item(self, identifier: str):
         """Fetch and render the complete subject feature article."""

@@ -501,3 +501,10 @@ class MainWindow(QMainWindow):
             self.disk_label.setText(f"💾 Free: {free_str}")
         except Exception:
             self.disk_label.setText("💾 Ready")
+
+    def closeEvent(self, event):
+        if hasattr(self, "disk_timer") and self.disk_timer.isActive():
+            self.disk_timer.stop()
+        if hasattr(self, "search_tab") and hasattr(self.search_tab, "shutdown_workers"):
+            self.search_tab.shutdown_workers()
+        super().closeEvent(event)

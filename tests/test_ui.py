@@ -26,8 +26,19 @@ class TestUI(unittest.TestCase):
         search_tab = window.search_tab
         self.assertIn("trending", search_tab.pills)
         self.assertIn("games", search_tab.pills)
+        self.assertIn("arcade", search_tab.pills)
+        self.assertIn("computers", search_tab.pills)
         search_tab.pills["games"].click()
         self.assertEqual(search_tab.current_collection_key, "games")
+
+        # Test search tab controls (presets, mediatype, reset)
+        self.assertIsNotNone(search_tab.preset_combo)
+        self.assertIsNotNone(search_tab.mediatype_combo)
+        self.assertIsNotNone(search_tab.reset_btn)
+        self.assertIsNotNone(search_tab.guide_btn)
+
+        # Test fresh Subject Dossier has default showcase bars populated
+        self.assertGreater(window.item_tab.curated_cards_container.count(), 0)
 
         # Test tab navigation
         window.btn_item.click()

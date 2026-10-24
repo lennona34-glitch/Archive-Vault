@@ -62,30 +62,47 @@ class InternetArchiveAPI:
             
         return headers
 
-    def search(
-        self,
+    @staticmethod
+    def build_smart_query(
         query: str,
         mediatype: Optional[str] = None,
-        sort: Optional[str] = "-downloads",
-        page: int = 1,
-        rows: int = 30
-    ) -> Dict[str, Any]:
+        filter_mode: Optional[str] = None
+    ) -> Tuple[str, Optional[str]]:
         """
-        Search Internet Archive items.
-        
-        :param query: Search keywords or lucene query
-        :param mediatype: 'software', 'movies', 'audio', 'texts', 'image', or None for all
-        :param sort: Sort field, e.g. '-downloads', '-publicdate', 'titleSorter asc'
-        :param page: Page number (1-indexed)
-        :param rows: Items per page
-        :return: Dict containing total_count, docs list, page, rows
+        Transform a natural user search or Lucene query into a high-precision
+        Internet Archive Solr query, expanding retro platforms, vintage records,
+        and multi-word titles while filtering out web-crawl and replay spam.
         """
         q = query.strip() if query else ""
-        
-        # Smart query expansion for vintage records, 78rpm, and vinyl audio
         effective_mediatype = mediatype
-        if q and ":" not in q:
+        effective_filter = filter_mode
+
+        # Unwrap legacy filter wrappers if passed inline (e.g. "(atari st) AND NOT mediatype:collection")
+        if q:
+            m_not_col = re.match(r"^\(([^:()]+)\)\s+AND\s+NOT\s+mediatype:collection$", q, flags=re.IGNORECASE)
+            if m_not_col:
+                q = m_not_col.group(1).strip()
+                if not effective_filter:
+                    effective_filter = "media_only"
+            else:
+                m_only_col = re.match(r"^\(([^:()]+)\)\s+AND\s+mediatype:collection$", q, flags=re.IGNORECASE)
+                if m_only_col:
+                    q = m_only_col.group(1).strip()
+                    if not effective_filter:
+                        effective_filter = "collections_only"
+
+        # Detect whether user explicitly entered advanced Lucene syntax
+        has_lucene_syntax = bool(
+            re.search(r"\b(collection|title|mediatype|creator|subject|identifier|year|date|format|description|language):", q, flags=re.IGNORECASE)
+            or re.search(r"\s+(AND|OR|NOT)\s+", q)
+            or '"' in q
+            or "[" in q
+        )
+
+        if q and not has_lucene_syntax:
             q_lower = q.lower()
+
+            # 1. Smart query expansion for vintage records, 78rpm, and vinyl audio
             record_triggers = [
                 "old records", "old record", "vintage records", "vintage record",
                 "vinyl records", "vinyl record", "78rpm", "78 rpm", "antique records",
@@ -93,39 +110,211 @@ class InternetArchiveAPI:
             ]
             is_record_search = any(trig in q_lower for trig in record_triggers) or q_lower in ("records", "record", "vinyl")
             if is_record_search:
-                # Remove matched triggers to extract remaining sub-queries (e.g. "old records jazz" -> "jazz")
                 residual = q_lower
                 for trig in record_triggers:
                     residual = residual.replace(trig, " ")
                 residual = residual.replace("records", " ").replace("record", " ").replace("vinyl", " ").strip()
-                
+
                 base_coll = "collection:(georgeblood OR 78rpm OR 78rpm_unfiltered OR album_recordings OR vinylrecords) AND NOT mediatype:collection"
                 if residual:
-                    q = f"({base_coll}) AND ({residual})"
+                    res_words = [w for w in re.findall(r"[a-z0-9]+", residual) if w]
+                    if res_words:
+                        res_and = " AND ".join(res_words)
+                        q = f"({base_coll}) AND (title:({res_and}) OR creator:({res_and}) OR subject:({res_and}))"
+                    else:
+                        q = base_coll
                 else:
                     q = base_coll
-                
+
                 if not effective_mediatype or effective_mediatype.lower() == "all":
                     effective_mediatype = "audio"
-        
-        # Build query string
-        parts = []
-        if q:
-            # If user didn't specify field: prefix, wrap keywords nicely
-            if ":" not in q:
-                # Search title, description, or general keywords
-                parts.append(f"({q})")
+                has_lucene_syntax = True
+
+        if q and not has_lucene_syntax:
+            q_lower = re.sub(r"\s+", " ", q.lower()).strip()
+
+            # 2. Smart Retro Platform, Arcade & ROM Set Expansion
+            platform_rules = [
+                (
+                    ["atari st", "atarist", "atari ste", "atari falcon"],
+                    "(collection:(softwarelibrary_atari_st_games OR softwarelibrary_atarist) OR title:(atari AND st))",
+                    "software"
+                ),
+                (
+                    ["atari 2600", "atari 7800", "atari 800", "atari xl", "atari xe"],
+                    "(collection:(consolelivingroom_atari2600 OR consolelivingroom_atari7800 OR softwarelibrary_atari) OR title:(atari AND (2600 OR 7800 OR 800)))",
+                    "software"
+                ),
+                (
+                    ["commodore amiga", "amiga cd32", "amiga 500", "amiga 1200", "amiga"],
+                    "(collection:(softwarelibrary_amiga_games OR softwarelibrary_amiga) OR title:amiga)",
+                    None
+                ),
+                (
+                    ["zx spectrum", "sinclair spectrum", "sinclair zx", "spectrum games", "zx81"],
+                    "(collection:softwarelibrary_zx_spectrum OR title:(zx AND spectrum))",
+                    "software"
+                ),
+                (
+                    ["commodore 64", "c64", "c-64", "vic-20", "vic20"],
+                    "(collection:softwarelibrary_c64 OR title:(c64 OR commodore))",
+                    "software"
+                ),
+                (
+                    ["amstrad cpc", "amstrad 464", "amstrad 6128", "amstrad"],
+                    "(collection:softwarelibrary_cpc OR title:amstrad)",
+                    "software"
+                ),
+                (
+                    ["ms-dos", "msdos", "dos games", "pc dos"],
+                    "(collection:softwarelibrary_msdos_games OR title:msdos)",
+                    "software"
+                ),
+                (
+                    ["mame roms", "mame romset", "mame reference", "mame chd", "mame"],
+                    "(title:mame AND mediatype:software)",
+                    "software"
+                ),
+                (
+                    ["internet arcade", "arcade games", "coin-op", "arcade"],
+                    "(collection:internetarcade OR (title:arcade AND mediatype:software))",
+                    "software"
+                ),
+                (
+                    ["tosec"],
+                    "(collection:tosec OR title:tosec)",
+                    "software"
+                ),
+                (
+                    ["no-intro", "nointro", "romset", "rom sets", "rom pack", "rom packs"],
+                    "(identifier:(ni-romsets OR retro-roms-best-set OR tiny-best-set-go) OR title:(nointro OR romset OR \"rom set\" OR \"best set\"))",
+                    "software"
+                ),
+                (
+                    ["sega genesis", "mega drive", "megadrive"],
+                    "(collection:sega_genesis_library OR title:(genesis OR \"mega drive\"))",
+                    "software"
+                ),
+                (
+                    ["scummvm"],
+                    "(title:scummvm OR subject:scummvm)",
+                    "software"
+                ),
+            ]
+
+            matched_clause = None
+            suggested_mt = None
+            residual = q_lower
+            padded = f" {q_lower} "
+
+            for triggers, clause, def_mt in platform_rules:
+                for trig in triggers:
+                    if f" {trig} " in padded:
+                        matched_clause = clause
+                        suggested_mt = def_mt
+                        residual = padded.replace(f" {trig} ", " ", 1).strip()
+                        break
+                if matched_clause:
+                    break
+
+            if matched_clause:
+                # Check if user asked for games/roms specifically or manuals/magazines
+                filler_words = {"games", "game", "roms", "rom", "files", "pack", "collection", "archive"}
+                raw_res_tokens = [w for w in re.findall(r"[a-z0-9]+", residual) if w]
+                wants_software = any(w in ("games", "game", "roms", "rom") for w in raw_res_tokens)
+                wants_texts = any(w in ("magazine", "magazines", "manual", "manuals", "book", "books") for w in raw_res_tokens)
+
+                clean_res_tokens = [w for w in raw_res_tokens if w not in filler_words]
+                stop_words = {"the", "of", "and", "in", "on", "for", "to", "a", "an"}
+                if len(clean_res_tokens) > 1:
+                    filtered_res = [w for w in clean_res_tokens if w not in stop_words]
+                    if filtered_res:
+                        clean_res_tokens = filtered_res
+
+                if clean_res_tokens:
+                    and_expr = " AND ".join(clean_res_tokens)
+                    q = f"({matched_clause}) AND (title:({and_expr}) OR identifier:({and_expr}))"
+                else:
+                    q = matched_clause
+
+                if not effective_mediatype or effective_mediatype.lower() == "all":
+                    if wants_texts:
+                        effective_mediatype = "texts"
+                    elif wants_software or suggested_mt:
+                        effective_mediatype = suggested_mt or "software"
+
+                has_lucene_syntax = True
+
+        if q and not has_lucene_syntax:
+            # 3. General Multi-Word / Single-Word High-Precision Search
+            tokens = [w for w in re.findall(r"[a-zA-Z0-9]+", q.lower()) if w]
+            stop_words = {"the", "of", "and", "in", "on", "for", "to", "a", "an"}
+            if len(tokens) > 1:
+                non_stop = [w for w in tokens if w not in stop_words]
+                if non_stop:
+                    tokens = non_stop
+
+            if tokens:
+                and_expr = " AND ".join(tokens)
+                if effective_filter == "collections_only":
+                    q = f"(title:({and_expr}) OR identifier:({and_expr}) OR subject:({and_expr}))"
+                else:
+                    q = f"(title:({and_expr}) OR identifier:({and_expr}) OR creator:({and_expr}))"
             else:
-                parts.append(q)
-        else:
-            parts.append("*")
-            
+                q = f"({q})"
+
+        # Assemble final query parts
+        parts = [q if q else "*"]
+
         if effective_mediatype and effective_mediatype.lower() != "all":
-            parts.append(f"mediatype:({effective_mediatype.lower()})")
-            
+            if f"mediatype:{effective_mediatype.lower()}" not in q.lower() and f"mediatype:({effective_mediatype.lower()}" not in q.lower():
+                parts.append(f"mediatype:({effective_mediatype.lower()})")
+
+        if effective_filter == "collections_only":
+            if "mediatype:collection" not in q.lower():
+                parts.append("mediatype:collection")
+        elif effective_filter == "media_only":
+            if "mediatype:collection" not in q.lower():
+                parts.append("NOT mediatype:(collection OR web OR data)")
+        else:
+            # Always exclude raw WARC web crawls and internal data blobs unless explicitly requested
+            if "mediatype:web" not in q.lower() and "mediatype:(collection or web" not in q.lower():
+                parts.append("NOT mediatype:(web OR data)")
+
+        # Exclude automated Fightcade replay spam unless user explicitly searched fightcade
+        if "fightcade" not in q.lower():
+            parts.append("NOT collection:Fightcade-Archive")
+
         final_query = " AND ".join(parts) if parts else "*"
+        return final_query, effective_mediatype
+
+    def search(
+        self,
+        query: str,
+        mediatype: Optional[str] = None,
+        sort: Optional[str] = "-downloads",
+        page: int = 1,
+        rows: int = 30,
+        filter_mode: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Search Internet Archive items.
         
-        params = {
+        :param query: Search keywords or lucene query
+        :param mediatype: 'software', 'movies', 'audio', 'texts', 'image', or None for all
+        :param sort: Sort field, e.g. '-downloads', '-publicdate', 'titleSorter asc', or '' for relevance
+        :param page: Page number (1-indexed)
+        :param rows: Items per page
+        :param filter_mode: 'media_only', 'collections_only', or 'all'
+        :return: Dict containing total_count, docs list, page, rows
+        """
+        final_query, effective_mediatype = self.build_smart_query(
+            query=query,
+            mediatype=mediatype,
+            filter_mode=filter_mode
+        )
+        
+        params: Dict[str, Any] = {
             "q": final_query,
             "fl[]": [
                 "identifier",
@@ -136,48 +325,61 @@ class InternetArchiveAPI:
                 "creator",
                 "publicdate"
             ],
-            "sort[]": sort or "-downloads",
             "rows": rows,
             "page": page,
             "output": "json"
         }
-        
-        last_error = None
-        for attempt in range(2):
-            try:
-                resp = self.session.get(
-                    self.SEARCH_URL,
-                    params=params,
-                    headers=self.get_headers(),
-                    timeout=35
-                )
-                if resp.status_code in (502, 503, 504) and attempt == 0:
-                    time.sleep(1.5)
-                    continue
-                resp.raise_for_status()
-                data = resp.json()
-                break
-            except (requests.exceptions.RequestException, ValueError) as e:
-                last_error = e
-                if attempt == 0:
-                    time.sleep(1.5)
-                    continue
-                print(f"[IA API] Search error: {e}")
-                raise RuntimeError(f"Archive.org search is busy or timed out: {e}")
-        if data is None:
-            raise RuntimeError(f"Archive.org search request failed: {last_error}")
+        if sort is None:
+            params["sort[]"] = "-downloads"
+        elif sort and sort != "relevance":
+            params["sort[]"] = sort
 
+        data = self._execute_search_request(params)
         response_obj = data.get("response", {})
         total_count = response_obj.get("numFound", 0)
+
+        # Automatic broad fallback if strict title/identifier/creator query returned 0 hits on a natural query
+        if total_count == 0 and query and ":" not in query:
+            tokens = [w for w in re.findall(r"[a-zA-Z0-9]+", query.lower()) if w]
+            if tokens:
+                and_expr = " AND ".join(tokens)
+                fallback_parts = [
+                    f"(title:({and_expr}) OR subject:({and_expr}) OR description:({and_expr}))",
+                    "NOT mediatype:(web OR data)",
+                    "NOT collection:Fightcade-Archive"
+                ]
+                if effective_mediatype and effective_mediatype.lower() != "all":
+                    fallback_parts.append(f"mediatype:({effective_mediatype.lower()})")
+                if filter_mode == "media_only":
+                    fallback_parts.append("NOT mediatype:collection")
+                elif filter_mode == "collections_only":
+                    fallback_parts.append("mediatype:collection")
+                params["q"] = " AND ".join(fallback_parts)
+                data = self._execute_search_request(params)
+                response_obj = data.get("response", {})
+                total_count = response_obj.get("numFound", 0)
+
         raw_docs = response_obj.get("docs", [])
         
+        # Known spam / broken / adult test identifiers to keep default feeds clean
+        blocked_ids = {
+            "sex_madness",
+            "dr.sex",
+            "hisnewjobcharleschaplin-1915",
+            "johnnyabbotssexadventuresi",
+            "porno_mine_2_1994_de_bond_emc-gb",
+            "diagnostic_test_cartridge_1984_atari_ntsc",
+        }
+
         cleaned_docs = []
         for doc in raw_docs:
             ident = doc.get("identifier", "")
-            if not ident:
+            if not ident or ident.lower() in blocked_ids:
                 continue
                 
             title = doc.get("title", ident)
+            if isinstance(title, list):
+                title = title[0] if title else ident
             # Clean html tags from description if present
             desc = doc.get("description", "")
             if isinstance(desc, list):
@@ -209,6 +411,34 @@ class InternetArchiveAPI:
             "page": page,
             "rows": rows
         }
+
+    def _execute_search_request(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        last_error = None
+        data = None
+        for attempt in range(2):
+            try:
+                resp = self.session.get(
+                    self.SEARCH_URL,
+                    params=params,
+                    headers=self.get_headers(),
+                    timeout=35
+                )
+                if resp.status_code in (502, 503, 504) and attempt == 0:
+                    time.sleep(1.5)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                break
+            except (requests.exceptions.RequestException, ValueError) as e:
+                last_error = e
+                if attempt == 0:
+                    time.sleep(1.5)
+                    continue
+                print(f"[IA API] Search error: {e}")
+                raise RuntimeError(f"Archive.org search is busy or timed out: {e}")
+        if data is None:
+            raise RuntimeError(f"Archive.org search request failed: {last_error}")
+        return data
 
     def get_item_metadata(self, identifier: str) -> Dict[str, Any]:
         """

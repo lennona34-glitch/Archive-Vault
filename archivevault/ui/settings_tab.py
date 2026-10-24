@@ -200,6 +200,42 @@ class SettingsTab(QWidget):
         self.auto_resume_cb = QCheckBox("Auto-resume unfinished downloads when application starts")
         pref_layout.addWidget(self.auto_resume_cb)
 
+        # Default Browse Category on Launch
+        cat_row = QHBoxLayout()
+        cat_lbl = QLabel("Default Startup Feed:")
+        cat_lbl.setFixedWidth(200)
+        cat_row.addWidget(cat_lbl)
+
+        self.default_cat_combo = QComboBox()
+        self.default_cat_combo.addItem("🔥 Trending Highlights", "trending")
+        self.default_cat_combo.addItem("🎮 MS-DOS & PC Classics", "games")
+        self.default_cat_combo.addItem("🕹️ Coin-Op Arcade & MAME", "arcade")
+        self.default_cat_combo.addItem("🖥️ Atari ST, Amiga, C64 & ZX", "computers")
+        self.default_cat_combo.addItem("💿 ROM Packs & TOSEC", "software")
+        self.default_cat_combo.addItem("🎬 Classic Feature Films", "movies")
+        self.default_cat_combo.addItem("📻 78rpm & Vinyl Records", "records")
+        self.default_cat_combo.addItem("🎵 Live Concerts Archive", "music")
+        self.default_cat_combo.addItem("📚 Books & Gaming Magazines", "books")
+        cat_row.addWidget(self.default_cat_combo)
+        cat_row.addStretch(1)
+        pref_layout.addLayout(cat_row)
+
+        # Default Search Sort
+        sort_row = QHBoxLayout()
+        sort_lbl = QLabel("Default Search Sort:")
+        sort_lbl.setFixedWidth(200)
+        sort_row.addWidget(sort_lbl)
+
+        self.default_sort_combo = QComboBox()
+        self.default_sort_combo.addItem("🔥 Most Popular (All-Time Downloads)", "-downloads")
+        self.default_sort_combo.addItem("🎯 Best Match (Relevance)", "relevance")
+        self.default_sort_combo.addItem("⚡ Weekly Activity", "-week")
+        self.default_sort_combo.addItem("🆕 Date Added (Newest)", "-publicdate")
+        self.default_sort_combo.addItem("🔤 Title (A-Z)", "titleSorter asc")
+        sort_row.addWidget(self.default_sort_combo)
+        sort_row.addStretch(1)
+        pref_layout.addLayout(sort_row)
+
         layout.addWidget(pref_box)
 
         # --- Section 3: Retro Gaming & Emulators (DOSBox & MAME) ---
@@ -256,13 +292,19 @@ class SettingsTab(QWidget):
 
         layout.addWidget(emu_box)
 
-        # --- Section 4: Save Button ---
+        # --- Section 4: Save & Restore Defaults Buttons ---
         btn_row = QHBoxLayout()
         self.save_btn = QPushButton("Save Settings 💾")
         self.save_btn.setObjectName("primaryBtn")
         self.save_btn.setStyleSheet("font-size: 14px; padding: 10px 24px;")
         self.save_btn.clicked.connect(self._save_settings)
         btn_row.addWidget(self.save_btn)
+
+        self.reset_defaults_btn = QPushButton("↺ Restore Default Preferences")
+        self.reset_defaults_btn.setToolTip("Reset search, browse, and download preferences to clean defaults (keeps your S3 keys)")
+        self.reset_defaults_btn.setStyleSheet("font-size: 13px; padding: 10px 18px;")
+        self.reset_defaults_btn.clicked.connect(self._restore_defaults)
+        btn_row.addWidget(self.reset_defaults_btn)
 
         self.save_msg_lbl = QLabel("")
         self.save_msg_lbl.setStyleSheet("color: #10b981; font-weight: 600;")
@@ -307,6 +349,14 @@ class SettingsTab(QWidget):
         idx = self.chunk_combo.findData(settings.chunk_size_kb)
         if idx >= 0:
             self.chunk_combo.setCurrentIndex(idx)
+
+        cat_idx = self.default_cat_combo.findData(getattr(settings, "default_category", "trending"))
+        if cat_idx >= 0:
+            self.default_cat_combo.setCurrentIndex(cat_idx)
+
+        sort_idx = self.default_sort_combo.findData(getattr(settings, "default_sort", "-downloads"))
+        if sort_idx >= 0:
+            self.default_sort_combo.setCurrentIndex(sort_idx)
 
     def _toggle_secret_visibility(self):
         if self.secret_input.echoMode() == QLineEdit.EchoMode.Password:
@@ -387,9 +437,22 @@ class SettingsTab(QWidget):
         settings.auto_resume_startup = self.auto_resume_cb.isChecked()
         settings.dosbox_path = self.dosbox_input.text().strip()
         settings.mame_path = self.mame_input.text().strip()
+        settings.default_category = self.default_cat_combo.currentData() or "trending"
+        settings.default_sort = self.default_sort_combo.currentData() or "-downloads"
         settings.save()
 
         self.save_msg_lbl.setText("Settings saved successfully! ✓")
+        import threading
+        def clear_msg():
+            import time
+            time.sleep(3)
+            self.save_msg_lbl.setText("")
+        threading.Thread(target=clear_msg, daemon=True).start()
+
+    def _restore_defaults(self):
+        settings.reset_defaults()
+        self._load_values()
+        self.save_msg_lbl.setText("Default preferences restored! ✓")
         import threading
         def clear_msg():
             import time

@@ -35,9 +35,22 @@ class Settings:
         self.theme: str = "dark"
         self.dosbox_path: str = ""
         self.mame_path: str = ""
+        self.default_category: str = "trending"
+        self.default_sort: str = "-downloads"
         
         self.load()
         self._check_and_import_ia_cli_config()
+
+    def reset_defaults(self):
+        """Restore search, browse, and download preferences to clean factory defaults (preserving S3 credentials)."""
+        self.download_dir = DEFAULT_DOWNLOAD_DIR
+        self.max_concurrent_downloads = 2
+        self.chunk_size_kb = 256
+        self.auto_resume_startup = False
+        self.create_item_subfolders = True
+        self.default_category = "trending"
+        self.default_sort = "-downloads"
+        self.save()
 
     def load(self):
         if os.path.exists(self.config_file):
@@ -55,6 +68,8 @@ class Settings:
                     self.theme = data.get("theme", self.theme)
                     self.dosbox_path = data.get("dosbox_path", self.dosbox_path)
                     self.mame_path = data.get("mame_path", self.mame_path)
+                    self.default_category = data.get("default_category", self.default_category)
+                    self.default_sort = data.get("default_sort", self.default_sort)
 
                     # Auto-heal: If user pasted their 16-char S3 secret key into the Cookie field
                     if not self.s3_secret_key and self.cookies:
@@ -80,7 +95,9 @@ class Settings:
                 "create_item_subfolders": self.create_item_subfolders,
                 "theme": self.theme,
                 "dosbox_path": self.dosbox_path,
-                "mame_path": self.mame_path
+                "mame_path": self.mame_path,
+                "default_category": self.default_category,
+                "default_sort": self.default_sort
             }
             with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
