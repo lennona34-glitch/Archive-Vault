@@ -45,5 +45,21 @@ class TestCore(unittest.TestCase):
         self.assertIn("georgeblood", q_rec)
         self.assertEqual(mt_rec, "audio")
 
+    def test_upload_api_validation(self):
+        # 1. Invalid identifier formatting
+        avail, msg = ia_api.check_identifier_available("abc")
+        self.assertFalse(avail)
+        self.assertIn("5-100 characters", msg)
+
+        # 2. Existing iconic identifier
+        avail_doom, msg_doom = ia_api.check_identifier_available("Doom-2")
+        self.assertFalse(avail_doom)
+        self.assertIn("already exists", msg_doom)
+
+        # 3. Upload fails gracefully when S3 keys are missing
+        orig_acc = ia_api.session.headers.get("Authorization")
+        success, err = ia_api.upload_file("test-ident-99999", "non_existent_file.xyz")
+        self.assertFalse(success)
+
 if __name__ == "__main__":
     unittest.main()

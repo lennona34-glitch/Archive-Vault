@@ -42,6 +42,7 @@ class CredentialTesterWorker(QThread):
 
 class SettingsTab(QWidget):
     """Application settings, IA account credentials, and download preferences."""
+    credentials_saved = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -440,6 +441,7 @@ class SettingsTab(QWidget):
         settings.default_category = self.default_cat_combo.currentData() or "trending"
         settings.default_sort = self.default_sort_combo.currentData() or "-downloads"
         settings.save()
+        self.credentials_saved.emit()
 
         self.save_msg_lbl.setText("Settings saved successfully! ✓")
         import threading

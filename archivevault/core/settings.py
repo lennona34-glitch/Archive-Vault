@@ -37,6 +37,7 @@ class Settings:
         self.mame_path: str = ""
         self.default_category: str = "trending"
         self.default_sort: str = "-downloads"
+        self.game_source_dirs: list[str] = []
         
         self.load()
         self._check_and_import_ia_cli_config()
@@ -70,6 +71,9 @@ class Settings:
                     self.mame_path = data.get("mame_path", self.mame_path)
                     self.default_category = data.get("default_category", self.default_category)
                     self.default_sort = data.get("default_sort", self.default_sort)
+                    self.game_source_dirs = data.get("game_source_dirs", self.game_source_dirs)
+                    if not isinstance(self.game_source_dirs, list):
+                        self.game_source_dirs = []
 
                     # Auto-heal: If user pasted their 16-char S3 secret key into the Cookie field
                     if not self.s3_secret_key and self.cookies:
@@ -97,7 +101,8 @@ class Settings:
                 "dosbox_path": self.dosbox_path,
                 "mame_path": self.mame_path,
                 "default_category": self.default_category,
-                "default_sort": self.default_sort
+                "default_sort": self.default_sort,
+                "game_source_dirs": self.game_source_dirs
             }
             with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)

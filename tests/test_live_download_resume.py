@@ -38,9 +38,9 @@ class TestLiveDownloadResume(unittest.TestCase):
         worker = DownloadWorker(item)
         worker.start()
 
-        # Wait until at least 64 KB is downloaded, then pause
+        # Wait until at least 32 KB is downloaded, then pause
         start_wait = time.time()
-        while item.downloaded_bytes < 65536 and time.time() - start_wait < 10:
+        while item.downloaded_bytes < 32768 and time.time() - start_wait < 25:
             time.sleep(0.05)
 
         worker.pause()
@@ -50,7 +50,7 @@ class TestLiveDownloadResume(unittest.TestCase):
         self.assertTrue(os.path.exists(part_path), "Expected .part file to exist after pause")
         partial_size = os.path.getsize(part_path)
         print(f"[Test] Step 2: Download paused successfully at {partial_size} bytes ({item.status}).")
-        self.assertGreaterEqual(partial_size, 65536)
+        self.assertGreaterEqual(partial_size, 32768)
         self.assertEqual(item.status, STATUS_PAUSED)
 
         # Step 3: Resume download

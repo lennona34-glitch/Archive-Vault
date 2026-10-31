@@ -13,7 +13,7 @@ class TestUI(unittest.TestCase):
     def test_main_window_init_and_zen_mode(self):
         window = MainWindow()
         self.assertIsNotNone(window)
-        self.assertEqual(window.pages.count(), 5)
+        self.assertEqual(window.pages.count(), 6)
         
         # Test Zen Mode toggle
         self.assertFalse(window.is_zen_mode)
@@ -49,9 +49,14 @@ class TestUI(unittest.TestCase):
 
         window.btn_arcade.click()
         self.assertEqual(window.pages.currentIndex(), 3)
+        self.assertEqual(window.arcade_tab.tab_widget.count(), 3)
+
+        window.btn_upload.click()
+        self.assertEqual(window.pages.currentIndex(), 4)
+        self.assertIsNotNone(window.upload_tab.btn_start_upload)
 
         window.btn_settings.click()
-        self.assertEqual(window.pages.currentIndex(), 4)
+        self.assertEqual(window.pages.currentIndex(), 5)
 
         window.btn_search.click()
         self.assertEqual(window.pages.currentIndex(), 0)

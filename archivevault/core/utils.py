@@ -643,6 +643,34 @@ def launch_local_dosbox(file_path: str) -> bool:
                 subprocess.Popen([exe, "-conf", conf_path, "-c", f'mount c "{game_dir}"', "-c", "c:"])
                 return True
 
+        elif abs_path.lower().endswith(('.iso', '.img', '.vhd')):
+            # CD-ROM / Disc Image: mount containing folder as C: and disc image as CD-ROM D:
+            game_dir = os.path.dirname(abs_path)
+            cmd = [
+                exe,
+                "-conf", conf_path,
+                "-c", f'mount c "{game_dir}"',
+                "-c", f'imgmount d "{abs_path}" -t iso',
+                "-c", "d:",
+                "-c", "dir /w"
+            ]
+            subprocess.Popen(cmd)
+            return True
+
+        elif abs_path.lower().endswith('.cue'):
+            # CD Audio / Mixed Mode CUE sheet: mount C: and imgmount CD-ROM D:
+            game_dir = os.path.dirname(abs_path)
+            cmd = [
+                exe,
+                "-conf", conf_path,
+                "-c", f'mount c "{game_dir}"',
+                "-c", f'imgmount d "{abs_path}" -t iso -fs iso',
+                "-c", "d:",
+                "-c", "dir /w"
+            ]
+            subprocess.Popen(cmd)
+            return True
+
         elif abs_path.lower().endswith('.conf'):
             subprocess.Popen([exe, "-conf", abs_path])
             return True

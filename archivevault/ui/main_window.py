@@ -32,6 +32,7 @@ from archivevault.ui.downloads_tab import DownloadsTab, VIDEO_EXTENSIONS
 from archivevault.ui.item_tab import ItemTab
 from archivevault.ui.search_tab import SearchTab
 from archivevault.ui.settings_tab import SettingsTab
+from archivevault.ui.upload_tab import UploadTab
 from archivevault.ui.styles import DARK_THEME
 
 def apply_windows_dark_titlebar(window: QMainWindow):
@@ -210,10 +211,16 @@ class MainWindow(QMainWindow):
         self.nav_group.addButton(self.btn_arcade, 3)
         side_layout.addWidget(self.btn_arcade)
 
+        self.btn_upload = QPushButton("📤  Upload to Archive")
+        self.btn_upload.setObjectName("navBtn")
+        self.btn_upload.setCheckable(True)
+        self.nav_group.addButton(self.btn_upload, 4)
+        side_layout.addWidget(self.btn_upload)
+
         self.btn_settings = QPushButton("⚙️  Settings")
         self.btn_settings.setObjectName("navBtn")
         self.btn_settings.setCheckable(True)
-        self.nav_group.addButton(self.btn_settings, 4)
+        self.nav_group.addButton(self.btn_settings, 5)
         side_layout.addWidget(self.btn_settings)
 
         side_layout.addStretch(1)
@@ -260,6 +267,14 @@ class MainWindow(QMainWindow):
         self.btn_open_video.clicked.connect(lambda: self.open_local_video())
         top_header_layout.addWidget(self.btn_open_video)
 
+        # Upload Button in Header
+        self.btn_header_upload = QPushButton("📤  Upload")
+        self.btn_header_upload.setObjectName("openVideoBtn")
+        self.btn_header_upload.setToolTip("Upload and publish items or retro software to Internet Archive")
+        self.btn_header_upload.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_header_upload.clicked.connect(self._navigate_to_upload)
+        top_header_layout.addWidget(self.btn_header_upload)
+
         # Zen Mode Button — Permanently placed at top right
         self.zen_toggle_btn = QPushButton("⛶  Zen Mode (F11)")
         self.zen_toggle_btn.setObjectName("zenBtn")
@@ -276,13 +291,15 @@ class MainWindow(QMainWindow):
         self.item_tab = ItemTab()
         self.downloads_tab = DownloadsTab()
         self.arcade_tab = ArcadeTab()
+        self.upload_tab = UploadTab()
         self.settings_tab = SettingsTab()
 
         self.pages.addWidget(self.search_tab)     # Index 0
         self.pages.addWidget(self.item_tab)       # Index 1
         self.pages.addWidget(self.downloads_tab)  # Index 2
         self.pages.addWidget(self.arcade_tab)     # Index 3
-        self.pages.addWidget(self.settings_tab)   # Index 4
+        self.pages.addWidget(self.upload_tab)     # Index 4
+        self.pages.addWidget(self.settings_tab)   # Index 5
 
         content_layout.addWidget(self.pages, stretch=1)
 
@@ -322,6 +339,10 @@ class MainWindow(QMainWindow):
         self.arcade_tab.play_dosbox_requested.connect(self._launch_dosbox_player)
         self.arcade_tab.inspect_item_requested.connect(self._navigate_to_item)
         self.arcade_tab.browse_retro_requested.connect(self._browse_retro_games)
+        self.arcade_tab.download_requested.connect(self._on_download_requested)
+        self.upload_tab.inspect_item_requested.connect(self._navigate_to_item)
+        self.upload_tab.open_settings_requested.connect(self._navigate_to_settings)
+        self.settings_tab.credentials_saved.connect(self.upload_tab.refresh_auth_status)
         self.audio_player.playback_state_changed.connect(self._on_audio_playback_changed)
         self.audio_player.track_changed.connect(self._on_track_changed)
         download_manager.queue_updated.connect(self._on_queue_updated)
@@ -446,9 +467,15 @@ class MainWindow(QMainWindow):
         self.btn_item.setChecked(True)
         self.pages.setCurrentIndex(1)
 
+    def _navigate_to_upload(self):
+        self.btn_upload.setChecked(True)
+        self.pages.setCurrentIndex(4)
+        if hasattr(self, "upload_tab"):
+            self.upload_tab.refresh_auth_status()
+
     def _navigate_to_settings(self):
         self.btn_settings.setChecked(True)
-        self.pages.setCurrentIndex(4)
+        self.pages.setCurrentIndex(5)
 
     def _navigate_to_arcade(self):
         self.btn_arcade.setChecked(True)

@@ -1,4 +1,5 @@
 import html
+import os
 import re
 import time
 import urllib.parse
@@ -579,6 +580,111 @@ class InternetArchiveAPI:
         """Fallback format guesser from filename extension."""
         ext = filename.rsplit(".", 1)[-1].upper() if "." in filename else "FILE"
         return ext
+
+    def check_identifier_available(self, identifier: str) -> Tuple[bool, str]:
+        """
+        Check if an Internet Archive item identifier is available or already in use.
+        Returns (is_available, status_message).
+        """
+        clean_id = identifier.strip()
+        if not clean_id:
+            return False, "Identifier cannot be empty."
+        if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_\-\.]{4,99}$", clean_id):
+            return False, "Identifier must be 5-100 characters (letters, numbers, hyphens, underscores)."
+
+        try:
+            resp = self.session.get(f"{self.METADATA_URL}/{clean_id}", timeout=10)
+            if resp.status_code == 404:
+                return True, "Identifier is available!"
+            if resp.status_code == 200:
+                data = resp.json()
+                if not data or not data.get("metadata") or data.get("is_empty"):
+                    return True, "Identifier is available!"
+                meta = data.get("metadata", {})
+                title = meta.get("title", clean_id)
+                return False, f"Identifier already exists ('{title}'). New files will be added to this item."
+            return True, f"Server responded with status {resp.status_code}."
+        except Exception as e:
+            return True, f"Could not verify identifier: {e} (assuming available)"
+
+    def upload_file(
+        self,
+        identifier: str,
+        file_path: str,
+        target_name: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        progress_callback: Optional[Any] = None,
+        cancel_check: Optional[Any] = None
+    ) -> Tuple[bool, str]:
+        """
+        Upload a file to Internet Archive via the S3-compatible API.
+        Creates the item if it does not exist when metadata is provided.
+        """
+        if not settings.s3_access_key or not settings.s3_secret_key:
+            return False, "Internet Archive S3 Access & Secret Keys are required to upload. Configure them in Settings."
+
+        if not os.path.exists(file_path):
+            return False, f"File not found on disk: {file_path}"
+
+        clean_id = identifier.strip()
+        filename = target_name or os.path.basename(file_path)
+        encoded_filename = urllib.parse.quote(filename)
+        url = f"{self.S3_URL}/{clean_id}/{encoded_filename}"
+
+        headers = self.get_headers()
+        headers["x-amz-auto-make-bucket"] = "1"
+        headers["x-archive-keep-old-version"] = "0"
+        headers["Content-Type"] = "application/octet-stream"
+
+        if metadata:
+            for k, v in metadata.items():
+                if v:
+                    safe_v = str(v).encode("ascii", "xmlcharrefreplace").decode("ascii")
+                    headers[f"x-archive-meta-{k}"] = safe_v
+
+        file_size = os.path.getsize(file_path)
+
+        class ProgressStream:
+            def __init__(self, path, total_sz, cb, c_check):
+                self.f = open(path, "rb")
+                self.total = total_sz
+                self.cb = cb
+                self.cancel_check = c_check
+                self.uploaded = 0
+
+            def read(self, size=-1):
+                if self.cancel_check and self.cancel_check():
+                    self.f.close()
+                    raise InterruptedError("Upload cancelled by user.")
+                chunk = self.f.read(size)
+                if chunk:
+                    self.uploaded += len(chunk)
+                    if self.cb:
+                        self.cb(self.uploaded, self.total)
+                return chunk
+
+            def close(self):
+                self.f.close()
+
+            def __len__(self):
+                return self.total
+
+        stream = None
+        try:
+            stream = ProgressStream(file_path, file_size, progress_callback, cancel_check)
+            resp = self.session.put(url, headers=headers, data=stream, timeout=900)
+            if resp.status_code in (200, 201):
+                return True, f"Successfully uploaded '{filename}' to {clean_id}!"
+            else:
+                err_text = resp.text[:250] if resp.text else f"HTTP {resp.status_code}"
+                return False, f"Upload error (HTTP {resp.status_code}): {err_text}"
+        except InterruptedError:
+            return False, "Upload cancelled."
+        except Exception as e:
+            return False, f"Upload failed: {e}"
+        finally:
+            if stream:
+                stream.close()
 
 # Global API instance
 ia_api = InternetArchiveAPI()
