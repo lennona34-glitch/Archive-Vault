@@ -26,20 +26,23 @@ from PyQt6.QtWidgets import (
 from archivevault.core.settings import settings
 from archivevault.core.utils import (
     format_size,
+    get_best_retroarch_core,
     get_dosbox_info,
     get_dosbox_path,
-    get_launchbox_path,
     get_mame_info,
     get_mame_path,
-    launch_launchbox,
+    get_retroarch_info,
+    get_retroarch_path,
     launch_local_dosbox,
     launch_mame_game,
+    launch_retroarch,
     open_containing_folder,
     open_file,
     open_with_7zip,
 )
 from archivevault.ui.dosbox_player import detect_retro_platform
-from archivevault.ui.mame_installer_dialog import LaunchBoxGuideDialog, MameInstallerDialog
+from archivevault.ui.mame_installer_dialog import MameInstallerDialog
+from archivevault.ui.retroarch_dialog import EasyRetroDialog
 
 RETRO_FILE_EXTENSIONS = (
     # MS-DOS PC & Archives
@@ -55,7 +58,7 @@ RETRO_FILE_EXTENSIONS = (
     # ZX Spectrum
     '.tap', '.tzx', '.z80', '.sna',
     # Retro Consoles & Optical
-    '.smc', '.sfc', '.nes', '.gen', '.md', '.smd', '.chd', '.pbp'
+    '.smc', '.sfc', '.nes', '.gen', '.md', '.smd', '.chd', '.pbp', '.gba', '.gbc', '.gb', '.n64', '.z64'
 )
 
 # Curated Legit Online Retro Game Catalog (Free, Legal, Open Source, and Public Domain Preservation)
@@ -387,9 +390,10 @@ KNOWN_IA_ARCADE_ROMS = {
 
 class ArcadeTab(QWidget):
     """
-    Dedicated Retro Arcade & DOSBox Hub.
-    Provides complete multi-folder local ROM & ISO sourcing ("Play Anything"),
-    instant 1-click downloads from legitimate online sources, and hardware/emulator tuning.
+    Dedicated Universal Retro Gaming Station & Arcade Hub.
+    Powered by RetroArch ('Easy Retro'), DOSBox HD, and MAME Arcade.
+    Provides complete multi-folder local ROM & ISO sourcing ('Play Anything'),
+    and instant 1-click play/downloads from verified online repositories.
     """
     play_dosbox_requested = pyqtSignal(str, str) # identifier, display_title
     inspect_item_requested = pyqtSignal(str) # identifier
@@ -435,13 +439,13 @@ class ArcadeTab(QWidget):
 
         info_layout = QVBoxLayout()
         info_layout.setSpacing(4)
-        title_lbl = QLabel("DOSBox Retro Arcade & Universal Game Station")
+        title_lbl = QLabel("Universal Retro Gaming Station (Easy Retro)")
         title_lbl.setStyleSheet("font-size: 22px; font-weight: 800; color: #ffffff;")
         info_layout.addWidget(title_lbl)
 
         sub_lbl = QLabel(
-            "Play Anything: Launch MS-DOS games, CD-ROM ISOs, CUE/BIN disc images, Arcade MAME ROMs, "
-            "Atari ST, and Amiga disks directly from your hard drives or stream instantly from verified online repositories."
+            "Play Anything: Launch Atari ST, Commodore Amiga, C64, ZX Spectrum, Amstrad CPC, Arcade (MAME), "
+            "Sega Genesis, CD-ROM ISOs, and MS-DOS games seamlessly via RetroArch and native emulation."
         )
         sub_lbl.setStyleSheet("font-size: 13px; color: #a1a1aa;")
         sub_lbl.setWordWrap(True)
@@ -449,7 +453,7 @@ class ArcadeTab(QWidget):
         top_row.addLayout(info_layout, stretch=1)
         hero_layout.addLayout(top_row)
 
-        # Emulator Status Quick Bar (DOSBox & MAME Arcade)
+        # Emulator Status Quick Bar (RetroArch Easy Retro, DOSBox HD, MAME)
         self.dosbox_cfg_card = QFrame()
         self.dosbox_cfg_card.setStyleSheet("""
             QFrame {
@@ -463,7 +467,23 @@ class ArcadeTab(QWidget):
         cfg_layout.setContentsMargins(8, 6, 8, 6)
         cfg_layout.setSpacing(6)
 
-        # Row 1: DOSBox
+        # Row 1: RetroArch (Easy Retro)
+        row_ra = QHBoxLayout()
+        row_ra.setSpacing(10)
+        self.ra_status_lbl = QLabel()
+        self.ra_status_lbl.setStyleSheet("font-size: 12px; color: #d4d4d8;")
+        row_ra.addWidget(self.ra_status_lbl, stretch=1)
+
+        self.btn_easy_retro = QPushButton("⚡ Easy Retro Station...")
+        self.btn_easy_retro.setFixedSize(160, 26)
+        self.btn_easy_retro.setStyleSheet("font-size: 11px; font-weight: 700; background-color: #2563eb; color: #ffffff;")
+        self.btn_easy_retro.setToolTip("Open RetroArch 'Easy Retro' Station to manage Libretro cores and controller setup")
+        self.btn_easy_retro.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_easy_retro.clicked.connect(self._open_easy_retro_dialog)
+        row_ra.addWidget(self.btn_easy_retro)
+        cfg_layout.addLayout(row_ra)
+
+        # Row 2: DOSBox HD
         row_dosbox = QHBoxLayout()
         row_dosbox.setSpacing(10)
         self.dosbox_status_lbl = QLabel()
@@ -484,23 +504,16 @@ class ArcadeTab(QWidget):
         row_dosbox.addWidget(btn_change_dosbox)
         cfg_layout.addLayout(row_dosbox)
 
-        # Row 2: MAME Arcade
+        # Row 3: MAME Arcade
         row_mame = QHBoxLayout()
         row_mame.setSpacing(10)
         self.mame_status_lbl = QLabel()
         self.mame_status_lbl.setStyleSheet("font-size: 12px; color: #d4d4d8;")
         row_mame.addWidget(self.mame_status_lbl, stretch=1)
 
-        self.btn_open_lb = QPushButton("LaunchBox 🚀")
-        self.btn_open_lb.setFixedSize(115, 26)
-        self.btn_open_lb.setStyleSheet("font-size: 11px; font-weight: 600; background-color: #3b82f6; color: #ffffff;")
-        self.btn_open_lb.setToolTip("Open LaunchBox frontend or view LaunchBox emulator setup guide")
-        self.btn_open_lb.clicked.connect(self._on_launchbox_action)
-        row_mame.addWidget(self.btn_open_lb)
-
-        self.btn_mame_action = QPushButton("⚡ Install MAME")
+        self.btn_mame_action = QPushButton("Configure MAME...")
         self.btn_mame_action.setFixedSize(130, 26)
-        self.btn_mame_action.setStyleSheet("font-size: 11px; font-weight: 600; background-color: #10b981; color: #ffffff;")
+        self.btn_mame_action.setStyleSheet("font-size: 11px; font-weight: 600;")
         self.btn_mame_action.clicked.connect(self._on_mame_action)
         row_mame.addWidget(self.btn_mame_action)
         cfg_layout.addLayout(row_mame)
@@ -547,7 +560,7 @@ class ArcadeTab(QWidget):
         # Tab 3: Hardware, Emulators & Controller Guide
         self.tab_controls = QWidget()
         self._init_controls_guide_tab(self.tab_controls)
-        self.tab_widget.addTab(self.tab_controls, "🎮  Emulators & Controller Guide")
+        self.tab_widget.addTab(self.tab_controls, "🎮  Easy Retro & Controller Guide")
 
         canvas_layout.addWidget(self.tab_widget)
 
@@ -592,8 +605,8 @@ class ArcadeTab(QWidget):
         bar_layout.addStretch(1)
 
         self.search_filter = QLineEdit()
-        self.search_filter.setPlaceholderText("🔍 Filter games by title, format (.iso, .st), or platform...")
-        self.search_filter.setFixedWidth(280)
+        self.search_filter.setPlaceholderText("🔍 Filter games by title, format (.iso, .st, .cue), or platform...")
+        self.search_filter.setFixedWidth(290)
         self.search_filter.textChanged.connect(self._apply_local_filters)
         bar_layout.addWidget(self.search_filter)
 
@@ -623,7 +636,8 @@ class ArcadeTab(QWidget):
             ("🖥️ Atari ST", "Atari ST"),
             ("🐬 Amiga", "Amiga"),
             ("📼 C64 & 8-Bit", "Commodore 64"),
-            ("💿 ISOs & Disc Images", "ISO"),
+            ("💿 Disc Images & ISOs", "Disc Image"),
+            ("🎮 Consoles & Genesis", "Console"),
         ]
 
         for idx, (label, val) in enumerate(platform_filters):
@@ -786,13 +800,21 @@ class ArcadeTab(QWidget):
         guide_layout.setContentsMargins(20, 18, 20, 18)
         guide_layout.setSpacing(14)
 
-        guide_title = QLabel("⌨️ Hardware Emulation, Wireless Gamepad & Controller Setup Guide")
+        guide_title = QLabel("⌨️ Easy Retro, Wireless Gamepad & Controller Setup Guide")
         guide_title.setStyleSheet("font-size: 16px; font-weight: 700; color: #38bdf8;")
         guide_layout.addWidget(guide_title)
 
         guide_html = """
         <div style="font-size: 12.5px; color: #d4d4d8; line-height: 1.6;">
             <div style="margin-bottom: 12px;">
+                <b style="color: #38bdf8; font-size: 14px;">🕹️ Easy Retro (RetroArch Universal Backend):</b><br>
+                <b>• Play Anything:</b> Automatically launches Atari ST (Hatari), Amiga (PUAE), C64 (VICE), ZX Spectrum (Fuse), Amstrad (Cap32), and Arcade (FBNeo/MAME) with the correct core.<br>
+                <b>• Zero Setup Required:</b> ArchiveVault routes downloaded games directly to RetroArch on your PC without third-party frontend headaches.<br>
+                <b>• In-Game Master Menu:</b> Press <b>F1</b> (or controller Guide / L3+R3) to pause, adjust shaders, or save states.<br>
+                <b>• Hotkeys:</b> <b>F2</b> to Save State, <b>F4</b> to Load State, <b>Esc twice</b> to exit cleanly back to ArchiveVault.
+            </div>
+
+            <div style="border-top: 1px solid #27272a; padding-top: 10px; margin-bottom: 12px;">
                 <b style="color: #f59e0b; font-size: 14px;">🕹️ MAME Arcade Cabinets (Coin-Op Controls):</b><br>
                 <b>• Tab:</b> In-Game Master Menu — Remap buttons for this game or all games, calibrate sticks, configure dips.<br>
                 <b>• 5 / 6:</b> Insert Coin (Player 1 / Player 2).<br>
@@ -800,24 +822,17 @@ class ArcadeTab(QWidget):
                 <b>• Arrow Keys / Gamepad Stick:</b> 8-Way directional joystick movement.<br>
                 <b>• Ctrl / Alt / Space (or Gamepad A / B / X):</b> Primary arcade punch/kick/fire buttons.<br>
                 <b>• Mouse & Trackball:</b> Automatically mapped for spinners (e.g. <i>Arkanoid</i>), trackballs (<i>Centipede</i>), and lightguns.<br>
-                <b>• Wireless Gamepads:</b> Native Windows Hybrid input provider supports Xbox, PlayStation, and 8BitDo Bluetooth gamepads without third-party drivers.<br>
                 <b>• Alt + Enter:</b> Toggle Fullscreen &nbsp;|&nbsp; <b>Esc:</b> Exit Arcade Machine.
             </div>
 
-            <div style="border-top: 1px solid #27272a; padding-top: 10px; margin-bottom: 12px;">
-                <b style="color: #38bdf8; font-size: 14px;">💾 DOSBox & CD-ROM ISO Emulation:</b><br>
+            <div style="border-top: 1px solid #27272a; padding-top: 10px;">
+                <b style="color: #10b981; font-size: 14px;">💾 DOSBox & CD-ROM ISO Emulation:</b><br>
                 <b>• ISO & CUE/BIN Mounting:</b> ArchiveVault mounts disc images automatically (e.g. <code>imgmount d "game.iso" -t iso</code>) with CD audio support.<br>
                 <b>• Mouse Locking:</b> Click inside DOSBox to capture mouse. Press <b>Ctrl + F10</b> at any time to release mouse back to desktop.<br>
                 <b>• High-Definition Scaler:</b> Custom 1280x960 4:3 aspect-corrected output (<code>normal3x</code> or <code>openglnb</code>) eliminates pixel distortion.<br>
                 <b>• Speed / CPU Turbo:</b> Press <b>Ctrl + F11</b> to decrease CPU cycles or <b>Ctrl + F12</b> to increase cycles.<br>
                 <b>• Sound Cards:</b> Emulates Sound Blaster 16 (IRQ 7, DMA 1, Port 220), Sound Blaster Pro, and Intelligent MPU-401 General MIDI / Roland MT-32.<br>
                 <b>• In-Game Joystick Activation:</b> Some classic games (like <i>Prince of Persia</i>) start in keyboard mode; press <b>Ctrl + J</b> in-game to switch to Joystick!
-            </div>
-
-            <div style="border-top: 1px solid #27272a; padding-top: 10px;">
-                <b style="color: #a855f7; font-size: 14px;">🚀 LaunchBox & Microcomputer Frontends:</b><br>
-                <b>• LaunchBox Integration:</b> Games can be sent directly to LaunchBox for advanced per-game custom emulator cores (Hatari for Atari ST, WinUAE for Amiga, VICE for C64).<br>
-                <b>• 1-Click Portable MAME:</b> ArchiveVault can download and install official portable MAME with full Windows joystick configuration in 1 click.
             </div>
         </div>
         """
@@ -925,7 +940,7 @@ class ArcadeTab(QWidget):
 
                         # Disc image flag
                         ext_upper = os.path.splitext(f)[1].upper()
-                        is_disc = ext_upper in ('.ISO', '.BIN', '.CUE', '.IMG', '.VHD')
+                        is_disc = ext_upper in ('.ISO', '.BIN', '.CUE', '.IMG', '.VHD', '.CHD')
 
                         found.append({
                             "filename": f,
@@ -967,9 +982,9 @@ class ArcadeTab(QWidget):
         for g in self.local_games:
             # Platform filter
             if p_filter:
-                if p_filter == "ISO" and not g["is_disc"]:
+                if p_filter == "Disc Image" and not g["is_disc"] and "disc" not in g["platform"].lower():
                     continue
-                elif p_filter != "ISO" and p_filter.lower() not in g["platform"].lower():
+                elif p_filter != "Disc Image" and p_filter.lower() not in g["platform"].lower():
                     continue
 
             # Text query
@@ -1179,21 +1194,27 @@ class ArcadeTab(QWidget):
         return card
 
     # =========================================================================
-    # LAUNCHERS ("PLAY ANYTHING")
+    # LAUNCHERS ("PLAY ANYTHING" — RETROARCH & NATIVE)
     # =========================================================================
+    def _open_easy_retro_dialog(self):
+        """Open the Easy Retro RetroArch Station setup page."""
+        dlg = EasyRetroDialog(self)
+        dlg.setup_changed.connect(self._update_dosbox_status_label)
+        dlg.exec()
+
     def _on_pick_local_game(self):
         """Prompt user to pick any game file, disc image, or ROM from hard drive."""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Game, Disc Image, or ROM from Hard Drive",
             settings.download_dir,
-            "Playable Games & Images (*.iso *.bin *.cue *.img *.vhd *.zip *.exe *.com *.bat *.st *.msa *.adf *.ipf *.dsk *.d64 *.tap *.7z *.smc *.nes *.gen);;All Files (*.*)"
+            "Playable Games & Images (*.iso *.bin *.cue *.img *.vhd *.chd *.zip *.exe *.com *.bat *.st *.msa *.adf *.ipf *.dsk *.d64 *.tap *.7z *.smc *.nes *.gen *.md *.pbp);;All Files (*.*)"
         )
         if file_path:
             self._launch_game_file(file_path)
 
     def _launch_game_file(self, file_path: str):
-        """Launch any game file, mounting CD-ROM ISOs, MAME arcade ROMs, or microcomputer disks."""
+        """Intelligently launch any game file in RetroArch, DOSBox HD, or In-App WebAssembly."""
         if not os.path.exists(file_path):
             QMessageBox.warning(self, "File Not Found", f"Game file not found:\n{file_path}")
             return
@@ -1217,28 +1238,17 @@ class ArcadeTab(QWidget):
             self._handle_arcade_rom_launch(file_path, fname, parent_dir)
             return
 
-        # 2. MICROCOMPUTERS & CONSOLES (Atari ST, Amiga, C64, ZX Spectrum, Amstrad, etc.)
-        if platform_name in ("Atari ST", "Atari 8-bit", "Atari Console", "Atari", "Amstrad CPC", "ZX Spectrum", "Commodore 64", "Amiga", "Apple II", "Console"):
-            self._handle_non_dos_microcomputer_launch(file_path, fname, platform_name)
+        # 2. MICROCOMPUTERS & CONSOLES (Atari ST, Amiga, C64, ZX Spectrum, Amstrad, Sega Genesis, PlayStation, etc.)
+        if platform_name in (
+            "Atari ST", "Atari 8-bit", "Atari Console", "Atari", "Amstrad CPC", "ZX Spectrum",
+            "Commodore 64", "Amiga", "Apple II", "Console", "Sega Genesis", "PlayStation", "Disc Image (CD-ROM)"
+        ):
+            self._handle_retro_platform_launch(file_path, fname, platform_name)
             return
 
-        # 3. CD-ROM ISOS & DISC IMAGES (.iso, .cue, .bin, .img, .vhd)
-        if ext in ('.iso', '.cue', '.bin', '.img', '.vhd'):
-            dosbox_exe = get_dosbox_path()
-            if dosbox_exe:
-                reply = QMessageBox.question(
-                    self,
-                    "Mount & Launch Disc Image in DOSBox",
-                    f"Mount '{fname}' as CD-ROM (Drive D:) in high-resolution scaled DOSBox?\n\n"
-                    "ArchiveVault will configure CD audio, mount the directory, and boot DOSBox automatically.",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
-                )
-                if reply == QMessageBox.StandardButton.Yes:
-                    launch_local_dosbox(file_path)
-                elif reply == QMessageBox.StandardButton.No:
-                    open_containing_folder(file_path)
-            else:
-                open_file(file_path)
+        # 3. CD-ROM ISOS & PC DISC IMAGES (.iso, .img, .vhd)
+        if ext in ('.iso', '.img', '.vhd'):
+            self._handle_pc_disc_launch(file_path, fname)
             return
 
         # 4. DIRECT DOS EXECUTABLES (.exe, .com, .bat, .conf)
@@ -1276,12 +1286,120 @@ class ArcadeTab(QWidget):
         # Fallback
         open_file(file_path)
 
+    def _handle_retro_platform_launch(self, file_path: str, fname: str, platform_name: str):
+        """Launch microcomputer and console games via RetroArch (Easy Retro) or In-App Theater."""
+        ra_path = get_retroarch_path()
+        has_ra = bool(ra_path and os.path.exists(ra_path))
+
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(f"{platform_name} Game")
+        msg_box.setIcon(QMessageBox.Icon.Information)
+
+        if has_ra:
+            core_path = get_best_retroarch_core(platform_name, file_path)
+            core_desc = os.path.basename(core_path) if core_path else "Auto Core Selection"
+            html_text = f"""
+            <div style='font-size: 13px; line-height: 1.5;'>
+                <h3 style='margin: 0 0 8px 0; color: #38bdf8;'>🕹️ {platform_name}: {fname}</h3>
+                <p><b>{fname}</b> is ready to play in <b>RetroArch (Easy Retro)</b> using core <code>{core_desc}</code>.</p>
+                <p style='color: #a1a1aa;'>
+                    • Full wireless controller autoconfig, aspect ratio correction, and shaders enabled.<br>
+                    • No third-party emulator configuration required!
+                </p>
+                <p><b>Choose an action:</b></p>
+            </div>
+            """
+        else:
+            html_text = f"""
+            <div style='font-size: 13px; line-height: 1.5;'>
+                <h3 style='margin: 0 0 8px 0; color: #f59e0b;'>🕹️ {platform_name}: {fname}</h3>
+                <p><b>{fname}</b> is an authentic <b>{platform_name}</b> game file.</p>
+                <p style='color: #a1a1aa;'>
+                    Play directly inside ArchiveVault's built-in WebAssembly theater, or set up <b>Easy Retro (RetroArch)</b> for native offline play.
+                </p>
+                <p><b>Choose an action:</b></p>
+            </div>
+            """
+
+        msg_box.setText(html_text)
+
+        btn_ra = None
+        btn_easy_setup = None
+
+        if has_ra:
+            btn_ra = msg_box.addButton("▶ Play in RetroArch (Easy Retro)", QMessageBox.ButtonRole.ActionRole)
+        else:
+            btn_easy_setup = msg_box.addButton("⚡ Set up Easy Retro (RetroArch)", QMessageBox.ButtonRole.ActionRole)
+
+        btn_inapp = msg_box.addButton("🌐 Play In-App (WebAssembly)", QMessageBox.ButtonRole.ActionRole)
+        btn_folder = msg_box.addButton("📂 Open Folder", QMessageBox.ButtonRole.ActionRole)
+        btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+
+        msg_box.exec()
+        clicked = msg_box.clickedButton()
+
+        if btn_ra and clicked == btn_ra:
+            success = launch_retroarch(file_path, platform_name)
+            if not success:
+                QMessageBox.warning(self, "Launch Notice", f"Could not launch RetroArch with {fname}. Check Easy Retro Station.")
+        elif btn_easy_setup and clicked == btn_easy_setup:
+            self._open_easy_retro_dialog()
+        elif clicked == btn_inapp:
+            stem = os.path.splitext(fname)[0]
+            ident = f"{platform_name.lower().replace(' ', '_')}_{stem}"
+            self.play_dosbox_requested.emit(ident, f"{platform_name}: {stem}")
+        elif clicked == btn_folder:
+            open_containing_folder(file_path)
+
+    # Backwards compatibility alias
+    _handle_non_dos_microcomputer_launch = _handle_retro_platform_launch
+
+    def _handle_pc_disc_launch(self, file_path: str, fname: str):
+        """Handle PC CD-ROM ISO or disc images (.iso, .img, .vhd)."""
+        dosbox_exe = get_dosbox_path()
+        has_dosbox = bool(dosbox_exe and os.path.exists(dosbox_exe))
+        ra_path = get_retroarch_path()
+        has_ra = bool(ra_path and os.path.exists(ra_path))
+
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Disc Image (CD-ROM)")
+        msg_box.setIcon(QMessageBox.Icon.Information)
+
+        html_text = f"""
+        <div style='font-size: 13px; line-height: 1.5;'>
+            <h3 style='margin: 0 0 8px 0; color: #8b5cf6;'>💿 Disc Image: {fname}</h3>
+            <p><b>{fname}</b> can be mounted as virtual CD-ROM drive D: in DOSBox HD, or launched in RetroArch.</p>
+            <p><b>Choose an action:</b></p>
+        </div>
+        """
+        msg_box.setText(html_text)
+
+        btn_dosbox = None
+        btn_ra = None
+        if has_dosbox:
+            btn_dosbox = msg_box.addButton("▶ Mount in DOSBox HD", QMessageBox.ButtonRole.ActionRole)
+        if has_ra:
+            btn_ra = msg_box.addButton("🕹️ Play in RetroArch (DOSBox Pure)", QMessageBox.ButtonRole.ActionRole)
+
+        btn_folder = msg_box.addButton("📂 Open Folder", QMessageBox.ButtonRole.ActionRole)
+        btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+
+        msg_box.exec()
+        clicked = msg_box.clickedButton()
+
+        if btn_dosbox and clicked == btn_dosbox:
+            launch_local_dosbox(file_path)
+        elif btn_ra and clicked == btn_ra:
+            launch_retroarch(file_path, "Disc Image (CD-ROM)")
+        elif clicked == btn_folder:
+            open_containing_folder(file_path)
+
     def _handle_arcade_rom_launch(self, file_path: str, fname: str, parent_dir: str):
-        """Handle user launching an Arcade / MAME ROM with direct MAME support and guides."""
+        """Handle user launching an Arcade / MAME ROM with direct MAME or RetroArch support."""
         mame_path = get_mame_path()
         has_mame = bool(mame_path and os.path.exists(mame_path))
-        lb_exe = get_launchbox_path()
-        has_lb = bool(lb_exe and os.path.exists(lb_exe))
+        ra_path = get_retroarch_path()
+        has_ra = bool(ra_path and os.path.exists(ra_path))
         rom_stem = os.path.splitext(fname)[0].lower()
         verified_arcade = KNOWN_IA_ARCADE_ROMS.get(rom_stem)
 
@@ -1289,61 +1407,30 @@ class ArcadeTab(QWidget):
         msg_box.setWindowTitle("Arcade ROM (MAME)")
         msg_box.setIcon(QMessageBox.Icon.Information)
 
-        if has_mame:
-            mame_info = get_mame_info()
-            src = mame_info.get("source", "MAME")
-            html_text = f"""
-            <div style='font-size: 13px; line-height: 1.5;'>
-                <h3 style='margin: 0 0 8px 0; color: #10b981;'>🕹️ Arcade Cabinet ROM: {fname}</h3>
-                <p><b>{fname}</b> is ready to play in <b>MAME Arcade Emulator</b> ({src}).</p>
-                <p style='color: #a1a1aa;'>
-                    Click <b>Play in MAME Arcade</b> below to launch directly with authentic video scaling, sound, and arcade controller support.
-                </p>
-            </div>
-            """
-        elif verified_arcade:
-            ia_id, ia_title = verified_arcade
-            html_text = f"""
-            <div style='font-size: 13px; line-height: 1.5;'>
-                <h3 style='margin: 0 0 8px 0; color: #f43f5e;'>🕹️ Arcade Cabinet ROM: {ia_title}</h3>
-                <p><b>{fname}</b> matches verified Internet Arcade game <b>{ia_title}</b>!</p>
-                <p style='color: #a1a1aa;'>
-                    Play this arcade classic directly inside ArchiveVault via WebAssembly MAME, or install standalone MAME for offline play.
-                </p>
-            </div>
-            """
-        else:
-            lb_hint = "LaunchBox is installed on your PC, but needs MAME enabled (Tools > Manage > Emulators > Add > Download MAME)." if has_lb else "Install MAME to run offline arcade ROMs."
-            html_text = f"""
-            <div style='font-size: 13px; line-height: 1.5;'>
-                <h3 style='margin: 0 0 8px 0; color: #f43f5e;'>🕹️ Offline Arcade ROM (MAME)</h3>
-                <p><b>{fname}</b> is an offline Arcade Machine ROM from your downloaded <i>{parent_dir}</i> collection.</p>
-                <p style='color: #a1a1aa;'>
-                    • <b>MAME Required:</b> Arcade ROMs need the MAME emulator to run.<br>
-                    • <b>Setup Options:</b> Use ArchiveVault's <b>1-Click MAME Install</b> (~83 MB portable), or follow the 3-step LaunchBox setup guide.<br>
-                    • <i>{lb_hint}</i>
-                </p>
-            </div>
-            """
-
+        html_text = f"""
+        <div style='font-size: 13px; line-height: 1.5;'>
+            <h3 style='margin: 0 0 8px 0; color: #10b981;'>🕹️ Arcade Cabinet ROM: {fname}</h3>
+            <p><b>{fname}</b> is ready to play with authentic video scaling, sound, and arcade controller support.</p>
+            <p><b>Choose an action:</b></p>
+        </div>
+        """
         msg_box.setText(html_text)
 
         btn_direct_mame = None
+        btn_ra = None
         btn_install_mame = None
-        btn_lb = None
-        btn_ia = None
 
         if has_mame:
-            btn_direct_mame = msg_box.addButton("▶ Play in MAME Arcade (Direct)", QMessageBox.ButtonRole.ActionRole)
-        else:
+            btn_direct_mame = msg_box.addButton("▶ Play in Standalone MAME", QMessageBox.ButtonRole.ActionRole)
+        if has_ra:
+            btn_ra = msg_box.addButton("🕹️ Play in RetroArch (FBNeo/MAME)", QMessageBox.ButtonRole.ActionRole)
+
+        if not has_mame and not has_ra:
             btn_install_mame = msg_box.addButton("⚡ 1-Click Install MAME", QMessageBox.ButtonRole.ActionRole)
 
+        btn_ia = None
         if verified_arcade:
             btn_ia = msg_box.addButton("🌐 Play In-App (Online MAME)", QMessageBox.ButtonRole.ActionRole)
-
-        if has_lb:
-            lb_btn_text = "🚀 LaunchBox" if has_mame else "🚀 LaunchBox (Setup Guide)"
-            btn_lb = msg_box.addButton(lb_btn_text, QMessageBox.ButtonRole.ActionRole)
 
         btn_folder = msg_box.addButton("📂 Open ROM Folder", QMessageBox.ButtonRole.ActionRole)
         btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
@@ -1355,6 +1442,8 @@ class ArcadeTab(QWidget):
             success = launch_mame_game(file_path)
             if not success:
                 QMessageBox.warning(self, "Launch Error", f"Could not launch MAME with {fname}. Check MAME configuration.")
+        elif btn_ra and clicked == btn_ra:
+            launch_retroarch(file_path, "Arcade")
         elif btn_install_mame and clicked == btn_install_mame:
             dlg = MameInstallerDialog(self)
             def on_installed(path):
@@ -1365,59 +1454,33 @@ class ArcadeTab(QWidget):
         elif btn_ia and clicked == btn_ia:
             ia_id, ia_title = verified_arcade
             self.play_dosbox_requested.emit(ia_id, f"Arcade: {ia_title}")
-        elif has_lb and clicked == btn_lb:
-            if not has_mame:
-                dlg = LaunchBoxGuideDialog(self)
-                res = dlg.exec()
-                if res == 2:
-                    self._on_mame_action()
-            else:
-                launch_launchbox(file_path)
         elif clicked == btn_folder:
-            open_containing_folder(file_path)
-
-    def _handle_non_dos_microcomputer_launch(self, file_path: str, fname: str, platform_name: str):
-        """Handle Atari ST, Amiga, C64, ZX Spectrum, Amstrad CPC files."""
-        lb_exe = get_launchbox_path()
-        has_lb = bool(lb_exe and os.path.exists(lb_exe))
-
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(f"{platform_name} Game Detected")
-        msg_box.setIcon(QMessageBox.Icon.Information)
-
-        html_text = f"""
-        <div style='font-size: 13px; line-height: 1.5;'>
-            <h3 style='margin: 0 0 8px 0; color: #38bdf8;'>💾 {platform_name} Software: {fname}</h3>
-            <p><b>{fname}</b> is an authentic <b>{platform_name}</b> disk/tape image.</p>
-            <p style='color: #a1a1aa;'>
-                • <b>Platform Architecture:</b> {platform_name} runs on specialized microcomputer hardware (Motorola 68000 / Z80 / 6502).<br>
-                • <b>How to play:</b> Stream it directly through ArchiveVault's built-in WebAssembly theater, or launch via LaunchBox with your retro core (Hatari, Steem, WinUAE, RetroArch).
-            </p>
-        </div>
-        """
-        msg_box.setText(html_text)
-
-        btn_inapp = msg_box.addButton("🌐 Play in ArchiveVault Theater", QMessageBox.ButtonRole.ActionRole)
-        btn_lb = msg_box.addButton("🚀 Open in LaunchBox", QMessageBox.ButtonRole.ActionRole) if has_lb else None
-        btn_open = msg_box.addButton("📂 Open File / Folder", QMessageBox.ButtonRole.ActionRole)
-        btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-
-        msg_box.exec()
-        clicked = msg_box.clickedButton()
-
-        if clicked == btn_inapp:
-            stem = os.path.splitext(fname)[0]
-            ident = f"{platform_name.lower().replace(' ', '_')}_{stem}"
-            self.play_dosbox_requested.emit(ident, f"{platform_name}: {stem}")
-        elif has_lb and clicked == btn_lb:
-            launch_launchbox(file_path)
-        elif clicked == btn_open:
             open_containing_folder(file_path)
 
     # =========================================================================
     # CONFIGURATION & STATUS
     # =========================================================================
     def _update_dosbox_status_label(self):
+        # 1. Update RetroArch (Easy Retro) status
+        ra_info = get_retroarch_info()
+        ra_path = ra_info.get("path")
+        if hasattr(self, "ra_status_lbl"):
+            if ra_path and os.path.exists(ra_path):
+                self.ra_status_lbl.setText(
+                    f"🕹️ <b>Easy Retro (RetroArch):</b> <span style='color: #4ade80;'>Ready ({ra_info.get('source')} • {ra_info.get('cores_count')} Cores)</span> &nbsp;•&nbsp; <code>{ra_path}</code>"
+                )
+                if hasattr(self, "btn_easy_retro"):
+                    self.btn_easy_retro.setText("⚡ Easy Retro Station")
+                    self.btn_easy_retro.setStyleSheet("font-size: 11px; font-weight: 700; background-color: #1e3a8a; color: #bfdbfe;")
+            else:
+                self.ra_status_lbl.setText(
+                    "🕹️ <b>Easy Retro (RetroArch):</b> <span style='color: #f59e0b;'>Not Configured</span> &nbsp;•&nbsp; Universal 1-click emulation setup available"
+                )
+                if hasattr(self, "btn_easy_retro"):
+                    self.btn_easy_retro.setText("⚡ Setup Easy Retro")
+                    self.btn_easy_retro.setStyleSheet("font-size: 11px; font-weight: 700; background-color: #2563eb; color: #ffffff;")
+
+        # 2. Update DOSBox status
         info = get_dosbox_info()
         dosbox_path = info.get("path")
         source = info.get("source")
@@ -1442,7 +1505,7 @@ class ArcadeTab(QWidget):
             if hasattr(self, "btn_toggle_dosbox"):
                 self.btn_toggle_dosbox.setText("Disable External")
 
-        # Update MAME Arcade status
+        # 3. Update MAME Arcade status
         mame_info = get_mame_info()
         mame_path = mame_info.get("path")
         if hasattr(self, "mame_status_lbl"):
@@ -1460,10 +1523,6 @@ class ArcadeTab(QWidget):
                 if hasattr(self, "btn_mame_action"):
                     self.btn_mame_action.setText("⚡ Install MAME")
                     self.btn_mame_action.setStyleSheet("font-size: 11px; font-weight: 600; background-color: #10b981; color: #ffffff;")
-
-        lb_path = info.get("launchbox_path")
-        if hasattr(self, "btn_open_lb"):
-            self.btn_open_lb.setVisible(bool(lb_path and os.path.exists(lb_path)))
 
     def _on_toggle_disable_dosbox(self):
         if settings.dosbox_path.lower() == "disabled":
@@ -1483,16 +1542,6 @@ class ArcadeTab(QWidget):
                 "External DOSBox disabled. All retro games will now play directly in ArchiveVault's built-in WebAssembly Theater."
             )
         self._update_dosbox_status_label()
-
-    def _on_launchbox_action(self):
-        mame_path = get_mame_path()
-        if not mame_path or not os.path.exists(mame_path):
-            dlg = LaunchBoxGuideDialog(self)
-            res = dlg.exec()
-            if res == 2:
-                self._on_mame_action()
-        else:
-            launch_launchbox()
 
     def _on_mame_action(self):
         mame_path = get_mame_path()

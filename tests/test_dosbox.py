@@ -113,5 +113,63 @@ class TestDOSBoxIntegration(unittest.TestCase):
         spectrum_game = detect_retro_platform("Manic_Miner.tap")
         self.assertEqual(spectrum_game["name"], "ZX Spectrum")
 
+    def test_bin_cue_disc_and_console_platform_detection(self):
+        from archivevault.ui.dosbox_player import detect_retro_platform
+
+        # General CD-ROM / Disc Image .bin should NOT be detected as MS-DOS
+        generic_bin = detect_retro_platform("GameDisk.bin")
+        self.assertNotEqual(generic_bin["name"], "MS-DOS")
+        self.assertIn("Disc", generic_bin["name"])
+
+        generic_cue = detect_retro_platform("Quake.cue")
+        self.assertIn("Disc", generic_cue["name"])
+
+        # PlayStation .bin/.cue should be detected as PlayStation
+        ps1_bin = detect_retro_platform("Crash_Bandicoot_PS1.bin")
+        self.assertEqual(ps1_bin["name"], "PlayStation")
+
+        # Sega Genesis .bin should be detected as Sega Genesis
+        md_bin = detect_retro_platform("Sonic_The_Hedgehog_Genesis.bin")
+        self.assertEqual(md_bin["name"], "Sega Genesis")
+
+        # ISO disc image
+        iso_game = detect_retro_platform("Warcraft_2_CD.iso")
+        self.assertIn("Disc", iso_game["name"])
+
+    def test_retroarch_info_and_core_resolution(self):
+        from archivevault.core.utils import (
+            get_retroarch_info,
+            get_retroarch_path,
+            get_retroarch_cores_dir,
+            get_best_retroarch_core
+        )
+
+        info = get_retroarch_info()
+        self.assertIsInstance(info, dict)
+        self.assertIn("path", info)
+        self.assertIn("cores_dir", info)
+        self.assertIn("cores", info)
+        self.assertIn("cores_count", info)
+
+        # On this machine, RetroArch exists at C:\RetroArch-Win64\retroarch.exe
+        if info["path"]:
+            self.assertTrue(os.path.exists(info["path"]))
+            cores_dir = get_retroarch_cores_dir()
+            self.assertIsNotNone(cores_dir)
+
+            # Test core preference resolution for Atari ST
+            core = get_best_retroarch_core("Atari ST")
+            if "hatari2014_libretro.dll" in info["cores"] or "hatari_libretro.dll" in info["cores"]:
+                self.assertIsNotNone(core)
+                self.assertTrue(core.endswith(".dll"))
+
+    def test_easy_retro_dialog_initialization(self):
+        from archivevault.ui.retroarch_dialog import EasyRetroDialog
+        dlg = EasyRetroDialog()
+        self.assertIsNotNone(dlg.cores_table)
+        self.assertGreater(dlg.cores_table.rowCount(), 5)
+        self.assertIn("Easy Retro", dlg.windowTitle())
+        dlg.close()
+
 if __name__ == "__main__":
     unittest.main()

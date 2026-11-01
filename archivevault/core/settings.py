@@ -35,6 +35,7 @@ class Settings:
         self.theme: str = "dark"
         self.dosbox_path: str = ""
         self.mame_path: str = ""
+        self.retroarch_path: str = ""
         self.default_category: str = "trending"
         self.default_sort: str = "-downloads"
         self.game_source_dirs: list[str] = []
@@ -69,6 +70,7 @@ class Settings:
                     self.theme = data.get("theme", self.theme)
                     self.dosbox_path = data.get("dosbox_path", self.dosbox_path)
                     self.mame_path = data.get("mame_path", self.mame_path)
+                    self.retroarch_path = data.get("retroarch_path", self.retroarch_path)
                     self.default_category = data.get("default_category", self.default_category)
                     self.default_sort = data.get("default_sort", self.default_sort)
                     self.game_source_dirs = data.get("game_source_dirs", self.game_source_dirs)
@@ -100,6 +102,7 @@ class Settings:
                 "theme": self.theme,
                 "dosbox_path": self.dosbox_path,
                 "mame_path": self.mame_path,
+                "retroarch_path": self.retroarch_path,
                 "default_category": self.default_category,
                 "default_sort": self.default_sort,
                 "game_source_dirs": self.game_source_dirs

@@ -123,13 +123,61 @@ def detect_retro_platform(identifier: str) -> dict:
         }
 
     # Consoles (SNES, NES, Genesis, Game Boy, GBA, etc.)
-    if id_lower.endswith((".smc", ".sfc", ".nes", ".gen", ".md", ".smd", ".pbp")) or any(k in id_lower for k in ("snes", "super_nintendo", "sfc", "nes", "famico", "n64", "gba", "gameboy", "gbc", "genesis", "megadrive", "hearto")):
+    if id_lower.endswith((".smc", ".sfc", ".nes", ".gen", ".md", ".smd", ".pbp", ".gba", ".gbc", ".gb", ".n64", ".z64")) or any(k in id_lower for k in ("snes", "super_nintendo", "sfc", "nes", "famico", "n64", "gba", "gameboy", "gbc", "genesis", "megadrive", "hearto")):
+        p_name = "Sega Genesis" if any(k in id_lower for k in ("genesis", "megadrive", "gen", ".md", ".smd")) else "Console"
         return {
-            "name": "Console",
-            "badge": "CONSOLE",
+            "name": p_name,
+            "badge": p_name.upper(),
             "badge_color": "#7c3aed",
             "default_cmd": "",
-            "tip": "Console: Use gamepad or keyboard controls to play."
+            "tip": f"{p_name}: Launch with RetroArch or in-app theater."
+        }
+
+    # CD-ROM & Disc Images (.cue, .bin, .iso, .chd, .img, .vhd)
+    if id_lower.endswith((".cue", ".bin", ".iso", ".chd", ".img", ".vhd")):
+        # 1. PlayStation 1
+        if any(k in id_lower for k in ("psx", "ps1", "playstation", "sony", "slus", "sles", "scus", "sces")):
+            return {
+                "name": "PlayStation",
+                "badge": "PS1",
+                "badge_color": "#3b82f6",
+                "default_cmd": "",
+                "tip": "Sony PlayStation: Launch with RetroArch (PCSX ReARMed) or In-App."
+            }
+        # 2. Sega CD / Saturn / Dreamcast / Genesis (.bin)
+        if any(k in id_lower for k in ("genesis", "megadrive", "sega", "segacd", "saturn", "dreamcast", "sonic")):
+            return {
+                "name": "Sega Genesis",
+                "badge": "SEGA",
+                "badge_color": "#2563eb",
+                "default_cmd": "",
+                "tip": "Sega Mega Drive / CD: Launch with RetroArch (Genesis Plus GX / Flycast)."
+            }
+        # 3. Atari 2600 (.bin cartridge dumps)
+        if any(k in id_lower for k in ("a2600", "2600", "atari2600", "stella")):
+            return {
+                "name": "Atari Console",
+                "badge": "ATARI 2600",
+                "badge_color": "#92400e",
+                "default_cmd": "",
+                "tip": "Atari 2600: Launch with RetroArch (Stella) or In-App."
+            }
+        # 4. Explicit MS-DOS PC CD-ROM
+        if any(k in id_lower for k in ("msdos", "dos_", "dosbox", "pc_", "ibm", "windows3x", "win3x", "win95")):
+            return {
+                "name": "MS-DOS (CD-ROM)",
+                "badge": "MS-DOS CD",
+                "badge_color": "#065f46",
+                "default_cmd": "",
+                "tip": "MS-DOS CD-ROM: Auto-mounted in DOSBox HD / RetroArch (DOSBox Pure)."
+            }
+        # 5. General Optical Disc Image (.bin/.cue/.iso/.chd)
+        return {
+            "name": "Disc Image (CD-ROM)",
+            "badge": "DISC / CD",
+            "badge_color": "#8b5cf6",
+            "default_cmd": "",
+            "tip": "Optical Disc Image: Launch with RetroArch or mount in DOSBox."
         }
 
     # Generic Atari fallback

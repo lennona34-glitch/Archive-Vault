@@ -401,6 +401,287 @@ def launch_launchbox(rom_path: str | None = None) -> bool:
             return False
     return False
 
+# =============================================================================
+# RETROARCH ("EASY RETRO") UNIVERSAL BACKEND
+# =============================================================================
+
+CORE_PREFERENCES = {
+    "Atari ST": ["hatari_libretro.dll", "hatari2014_libretro.dll"],
+    "Atari 8-bit": ["atari800_libretro.dll"],
+    "Atari Console": ["stella_libretro.dll", "prosystem_libretro.dll"],
+    "Amiga": ["puae_libretro.dll", "puae2021_libretro.dll", "amiberry_libretro.dll"],
+    "Amstrad CPC": ["cap32_libretro.dll", "crocods_libretro.dll"],
+    "Commodore 64": ["vice_x64sc_libretro.dll", "vice_x64_libretro.dll", "vice_xscpu64_libretro.dll", "vice_x128_libretro.dll"],
+    "ZX Spectrum": ["fuse_libretro.dll"],
+    "Arcade": ["fbneo_libretro.dll", "mame_libretro.dll", "mame2000_libretro.dll", "fbalpha2012_neogeo_libretro.dll"],
+    "Sega Genesis": ["genesis_plus_gx_libretro.dll", "picodrive_libretro.dll"],
+    "PlayStation": ["pcsx_rearmed_libretro.dll", "beetle_psx_libretro.dll", "swanstation_libretro.dll", "mednafen_psx_libretro.dll"],
+    "Console": ["snes9x_libretro.dll", "nestopia_libretro.dll", "genesis_plus_gx_libretro.dll"],
+    "Disc Image (CD-ROM)": ["pcsx_rearmed_libretro.dll", "dosbox_pure_libretro.dll", "genesis_plus_gx_libretro.dll", "beetle_psx_libretro.dll"],
+    "MS-DOS (CD-ROM)": ["dosbox_pure_libretro.dll", "dosbox_svn_libretro.dll"],
+    "MS-DOS": ["dosbox_pure_libretro.dll", "dosbox_svn_libretro.dll"],
+}
+
+CORE_DISPLAY_NAMES = {
+    "hatari_libretro.dll": "Hatari (Atari ST/STE/TT/Falcon)",
+    "hatari2014_libretro.dll": "Hatari 2014 (Atari ST)",
+    "puae_libretro.dll": "PUAE (Amiga 500/1200/4000)",
+    "puae2021_libretro.dll": "PUAE 2021 (Amiga)",
+    "cap32_libretro.dll": "Caprice32 (Amstrad CPC)",
+    "crocods_libretro.dll": "CrocoDS (Amstrad CPC)",
+    "fuse_libretro.dll": "Fuse (ZX Spectrum)",
+    "vice_x64sc_libretro.dll": "VICE x64sc (Commodore 64 Accurate)",
+    "vice_x128_libretro.dll": "VICE x128 (Commodore 128)",
+    "fbneo_libretro.dll": "FinalBurn Neo (Arcade / Neo Geo / Capcom)",
+    "mame_libretro.dll": "MAME (Arcade Cabinets)",
+    "mame2000_libretro.dll": "MAME 2000 (Arcade)",
+    "genesis_plus_gx_libretro.dll": "Genesis Plus GX (Sega Genesis / Mega Drive / CD)",
+    "snes9x_libretro.dll": "Snes9x (Super Nintendo)",
+    "nestopia_libretro.dll": "Nestopia UE (NES / Famicom)",
+    "pcsx_rearmed_libretro.dll": "PCSX ReARMed (Sony PlayStation 1)",
+    "dosbox_pure_libretro.dll": "DOSBox Pure (MS-DOS with Auto-ISO / Controller)",
+}
+
+def get_retroarch_info() -> dict:
+    """Return detailed metadata about RetroArch installation, path, and installed cores."""
+    try:
+        from archivevault.core.settings import settings
+        saved = getattr(settings, "retroarch_path", "").strip()
+        if saved and os.path.exists(saved):
+            cores_dir = os.path.join(os.path.dirname(saved), "cores")
+            cores = [f for f in os.listdir(cores_dir) if f.lower().endswith(".dll")] if os.path.exists(cores_dir) else []
+            return {
+                "path": saved,
+                "source": "Custom Setting",
+                "cores_dir": cores_dir,
+                "cores": cores,
+                "cores_count": len(cores)
+            }
+    except Exception:
+        pass
+
+    user_home = os.path.expanduser("~")
+    candidates = [
+        (r"C:\RetroArch-Win64\retroarch.exe", "Installed (C:\\RetroArch-Win64)"),
+        (r"C:\Program Files\RetroArch\retroarch.exe", "Installed (Program Files)"),
+        (os.path.join(user_home, "AppData", "Roaming", "RetroArch", "retroarch.exe"), "AppData Roaming"),
+        (os.path.join(user_home, "AppData", "Local", "Programs", "RetroArch", "retroarch.exe"), "AppData Local"),
+        (os.path.join(user_home, ".archivevault", "emulators", "retroarch", "retroarch.exe"), "Portable ArchiveVault"),
+        (r"C:\Program Files (x86)\Steam\steamapps\common\RetroArch\retroarch.exe", "Steam"),
+    ]
+
+    for c_path, src in candidates:
+        if c_path and os.path.exists(c_path):
+            cores_dir = os.path.join(os.path.dirname(c_path), "cores")
+            cores = [f for f in os.listdir(cores_dir) if f.lower().endswith(".dll")] if os.path.exists(cores_dir) else []
+            return {
+                "path": c_path,
+                "source": src,
+                "cores_dir": cores_dir,
+                "cores": cores,
+                "cores_count": len(cores)
+            }
+
+    which_ra = shutil.which("retroarch")
+    if which_ra and os.path.exists(which_ra):
+        cores_dir = os.path.join(os.path.dirname(which_ra), "cores")
+        cores = [f for f in os.listdir(cores_dir) if f.lower().endswith(".dll")] if os.path.exists(cores_dir) else []
+        return {
+            "path": which_ra,
+            "source": "System (PATH)",
+            "cores_dir": cores_dir,
+            "cores": cores,
+            "cores_count": len(cores)
+        }
+
+    return {
+        "path": None,
+        "source": "Not Installed",
+        "cores_dir": None,
+        "cores": [],
+        "cores_count": 0
+    }
+
+def get_retroarch_path() -> str | None:
+    """Find RetroArch executable on the user's system."""
+    info = get_retroarch_info()
+    return info.get("path")
+
+def get_retroarch_cores_dir() -> str | None:
+    """Find RetroArch cores directory on the user's system."""
+    info = get_retroarch_info()
+    cores_dir = info.get("cores_dir")
+    if cores_dir:
+        return cores_dir
+    ra_path = info.get("path")
+    if ra_path:
+        return os.path.join(os.path.dirname(ra_path), "cores")
+    return None
+
+def get_best_retroarch_core(platform_name: str, file_path: str = "") -> str | None:
+    """Find the best installed Libretro core path for a given retro platform."""
+    info = get_retroarch_info()
+    cores_dir = info.get("cores_dir")
+    if not cores_dir or not os.path.exists(cores_dir):
+        return None
+
+    installed_cores = set(f.lower() for f in info.get("cores", []))
+
+    # Check preferences for platform
+    pref_list = CORE_PREFERENCES.get(platform_name, [])
+    for pref in pref_list:
+        if pref.lower() in installed_cores:
+            full_p = os.path.join(cores_dir, pref)
+            if os.path.exists(full_p):
+                return full_p
+
+    # Fallback to any core matching keywords
+    name_clean = platform_name.lower().replace(" ", "").replace("-", "")
+    for c in installed_cores:
+        if name_clean in c:
+            return os.path.join(cores_dir, c)
+
+    return None
+
+def launch_retroarch(rom_path: str, platform_name: str | None = None) -> bool:
+    """
+    Launch any retro game or disc image directly in RetroArch with the appropriate Libretro core.
+    """
+    ra_exe = get_retroarch_path()
+    if not ra_exe or not os.path.exists(ra_exe):
+        return False
+
+    abs_rom = os.path.abspath(rom_path)
+    if not os.path.exists(abs_rom):
+        return False
+
+    ra_dir = os.path.dirname(ra_exe)
+    core_path = get_best_retroarch_core(platform_name or "", abs_rom) if platform_name else None
+
+    cmd = [ra_exe]
+    if core_path and os.path.exists(core_path):
+        cmd.extend(["-L", core_path])
+    cmd.append(abs_rom)
+
+    try:
+        subprocess.Popen(cmd, cwd=ra_dir)
+        return True
+    except Exception as e:
+        print(f"[RetroArch] Error launching game: {e}")
+        return False
+
+def download_retroarch_core(core_dll_name: str, progress_callback=None) -> tuple[bool, str]:
+    """
+    Download and extract a Libretro core directly from the official Libretro buildbot into RetroArch's cores folder.
+    """
+    import urllib.request
+    info = get_retroarch_info()
+    cores_dir = info.get("cores_dir")
+    if not cores_dir:
+        ra_path = info.get("path")
+        if ra_path:
+            cores_dir = os.path.join(os.path.dirname(ra_path), "cores")
+            os.makedirs(cores_dir, exist_ok=True)
+        else:
+            return False, "RetroArch is not configured or installed."
+
+    os.makedirs(cores_dir, exist_ok=True)
+    target_core_path = os.path.join(cores_dir, core_dll_name)
+    zip_url = f"https://buildbot.libretro.com/nightly/windows/x86_64/latest/{core_dll_name}.zip"
+
+    try:
+        if progress_callback:
+            progress_callback(10, f"Connecting to Libretro Buildbot for {core_dll_name}...")
+
+        req = urllib.request.Request(zip_url, headers={"User-Agent": "ArchiveVault/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            content = resp.read()
+
+        import io
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            zf.extractall(cores_dir)
+
+        if os.path.exists(target_core_path):
+            if progress_callback:
+                progress_callback(100, f"Core {core_dll_name} installed successfully!")
+            return True, target_core_path
+        return False, "Extraction completed but core DLL was not found."
+    except Exception as e:
+        return False, f"Failed to download core from Libretro: {e}"
+
+def install_portable_retroarch(progress_callback=None) -> tuple[bool, str]:
+    """
+    Download and set up 64-bit portable RetroArch into ~/.archivevault/emulators/retroarch.
+    """
+    import urllib.request
+    from archivevault.core.settings import settings
+
+    user_home = os.path.expanduser("~")
+    target_dir = os.path.join(user_home, ".archivevault", "emulators", "retroarch")
+    target_exe = os.path.join(target_dir, "retroarch.exe")
+
+    if os.path.exists(target_exe):
+        settings.retroarch_path = target_exe
+        settings.save()
+        return True, target_exe
+
+    os.makedirs(target_dir, exist_ok=True)
+    temp_archive = os.path.join(user_home, ".archivevault", "emulators", "RetroArch_setup.7z")
+    download_url = "https://buildbot.libretro.com/stable/1.19.1/windows/x86_64/RetroArch.7z"
+
+    try:
+        if progress_callback:
+            progress_callback(5, "Connecting to Libretro Buildbot for portable RetroArch...")
+
+        req = urllib.request.Request(download_url, headers={"User-Agent": "ArchiveVault/1.0"})
+        with urllib.request.urlopen(req, timeout=45) as resp, open(temp_archive, "wb") as out_f:
+            total_size = int(resp.headers.get("Content-Length", 220000000))
+            downloaded = 0
+            chunk_size = 256 * 1024
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                out_f.write(chunk)
+                downloaded += len(chunk)
+                if progress_callback:
+                    pct = int(10 + (downloaded / max(total_size, 1)) * 75)
+                    progress_callback(min(pct, 85), f"Downloading RetroArch: {downloaded / (1024*1024):.1f} MB...")
+
+        if progress_callback:
+            progress_callback(88, "Extracting RetroArch...")
+
+        seven_zip = get_7z_cli_path()
+        extracted = False
+        if seven_zip and os.path.exists(seven_zip):
+            proc = subprocess.run([seven_zip, "x", temp_archive, f"-o{target_dir}", "-y"], capture_output=True)
+            if proc.returncode == 0:
+                extracted = True
+
+        try:
+            if os.path.exists(temp_archive):
+                os.remove(temp_archive)
+        except Exception:
+            pass
+
+        if os.path.exists(target_exe):
+            settings.retroarch_path = target_exe
+            settings.save()
+            return True, target_exe
+
+        for root, _, files in os.walk(target_dir):
+            for f in files:
+                if f.lower() == "retroarch.exe":
+                    found = os.path.join(root, f)
+                    settings.retroarch_path = found
+                    settings.save()
+                    return True, found
+
+        return False, "RetroArch downloaded but executable not found after extraction."
+    except Exception as e:
+        return False, f"Failed to install portable RetroArch: {e}"
+
 def get_dosbox_info() -> dict:
     """Return detailed metadata about the DOSBox installation and its origin."""
     try:
