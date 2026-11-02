@@ -1,7 +1,15 @@
 import os
 import sys
 import unittest
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
+
+if hasattr(Qt.ApplicationAttribute, "AA_ShareOpenGLContexts"):
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+try:
+    import PyQt6.QtWebEngineWidgets
+except ImportError:
+    pass
 
 from archivevault.ui.dosbox_player import DOSBoxPlayerDialog
 from archivevault.ui.main_window import MainWindow
@@ -28,12 +36,13 @@ class TestDOSBoxIntegration(unittest.TestCase):
         dialog._toggle_mute()
         self.assertFalse(dialog.is_muted)
 
-        # Test fullscreen toggle
-        self.assertFalse(dialog.is_custom_fullscreen)
-        dialog._toggle_fullscreen()
-        self.assertTrue(dialog.is_custom_fullscreen)
-        dialog._toggle_fullscreen()
-        self.assertFalse(dialog.is_custom_fullscreen)
+        # Test error card creation: Verify LaunchBox is completely removed and Easy Retro / Retry are present
+        dialog._show_emulation_error_card("Test Error", "Test message")
+        self.assertTrue(hasattr(dialog, "btn_err_retry"))
+        self.assertTrue(hasattr(dialog, "btn_err_ra"))
+        self.assertFalse(hasattr(dialog, "btn_err_lb"))
+        self.assertIn("Retry", dialog.btn_err_retry.text())
+        self.assertIn("Easy Retro", dialog.btn_err_ra.text())
 
         dialog.close()
 

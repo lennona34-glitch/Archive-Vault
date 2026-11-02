@@ -1,7 +1,14 @@
 import sys
 import unittest
-from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
+
+if hasattr(Qt.ApplicationAttribute, "AA_ShareOpenGLContexts"):
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+try:
+    import PyQt6.QtWebEngineWidgets
+except ImportError:
+    pass
 
 from archivevault.ui.main_window import MainWindow
 
@@ -46,6 +53,25 @@ class TestUI(unittest.TestCase):
         
         window.btn_downloads.click()
         self.assertEqual(window.pages.currentIndex(), 2)
+        self.assertIsNotNone(window.downloads_tab.clear_list_btn)
+        self.assertIsNotNone(window.downloads_tab.clear_done_btn)
+
+        # Test download manager clear operations
+        from archivevault.core.downloader import download_manager, DownloadItem, STATUS_COMPLETED, STATUS_FAILED
+        orig_items = list(download_manager.items)
+        try:
+            download_manager.items = []
+            download_manager.items.append(DownloadItem(id="test1", identifier="item1", filename="test1.txt", url="http://example.com/1", save_path="test1.txt", part_path="test1.part", total_bytes=1000, status=STATUS_COMPLETED))
+            download_manager.items.append(DownloadItem(id="test2", identifier="item2", filename="test2.txt", url="http://example.com/2", save_path="test2.txt", part_path="test2.part", total_bytes=2000, status=STATUS_FAILED))
+            download_manager.clear_inactive()
+            self.assertEqual(len(download_manager.items), 0)
+
+            download_manager.items.append(DownloadItem(id="test3", identifier="item3", filename="test3.txt", url="http://example.com/3", save_path="test3.txt", part_path="test3.part", total_bytes=3000))
+            download_manager.clear_all(cancel_active=False)
+            self.assertEqual(len(download_manager.items), 0)
+        finally:
+            download_manager.items = orig_items
+            download_manager.save_queue()
 
         window.btn_arcade.click()
         self.assertEqual(window.pages.currentIndex(), 3)

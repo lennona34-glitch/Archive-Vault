@@ -570,6 +570,26 @@ def launch_retroarch(rom_path: str, platform_name: str | None = None) -> bool:
         print(f"[RetroArch] Error launching game: {e}")
         return False
 
+def find_local_game_rom(identifier: str) -> str | None:
+    """Search downloads directory and user game source directories for a local ROM matching identifier."""
+    from archivevault.core.settings import settings
+    search_dirs = [settings.download_dir] + getattr(settings, "game_source_dirs", [])
+    id_clean = identifier.lower().replace("arcade_", "").replace("msdos_", "").replace("amiga_", "").replace("c64_", "").replace("zx_", "")
+    
+    for sdir in search_dirs:
+        if not sdir or not os.path.exists(sdir):
+            continue
+        try:
+            for root, _, files in os.walk(sdir):
+                for f in files:
+                    f_lower = f.lower()
+                    f_stem = os.path.splitext(f_lower)[0]
+                    if identifier.lower() in f_lower or id_clean == f_stem or (len(id_clean) >= 4 and id_clean in f_stem):
+                        return os.path.join(root, f)
+        except Exception:
+            continue
+    return None
+
 def download_retroarch_core(core_dll_name: str, progress_callback=None) -> tuple[bool, str]:
     """
     Download and extract a Libretro core directly from the official Libretro buildbot into RetroArch's cores folder.

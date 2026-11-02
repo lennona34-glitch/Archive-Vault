@@ -528,6 +528,26 @@ class DownloadManager(QObject):
         self.save_queue()
         self.queue_updated.emit()
 
+    def clear_inactive(self):
+        """Remove all completed, cancelled, and failed items from queue."""
+        self.items = [i for i in self.items if i.status in (STATUS_DOWNLOADING, STATUS_QUEUED, STATUS_PAUSED)]
+        self._items_by_id = {it.id: it for it in self.items}
+        self.save_queue()
+        self.queue_updated.emit()
+
+    def clear_all(self, cancel_active: bool = True):
+        """Clear the entire download list, cancelling running downloads if requested."""
+        if cancel_active:
+            for item_id in list(self.workers.keys()):
+                worker = self.workers.get(item_id)
+                if worker:
+                    worker.cancel()
+            self.workers.clear()
+        self.items = []
+        self._items_by_id.clear()
+        self.save_queue()
+        self.queue_updated.emit()
+
     def _process_queue(self):
         """Ensure active downloads match settings.max_concurrent_downloads."""
         # Clean finished workers
@@ -595,6 +615,9 @@ class _DownloadManagerProxy:
     """Proxy object so callers can import download_manager directly."""
     def __getattr__(self, name):
         return getattr(get_download_manager(), name)
+
+    def __setattr__(self, name, value):
+        setattr(get_download_manager(), name, value)
 
 download_manager = _DownloadManagerProxy()
 

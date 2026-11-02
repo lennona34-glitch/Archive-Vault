@@ -95,6 +95,26 @@ class DownloadsTab(QWidget):
         self.clear_done_btn.clicked.connect(self._clear_completed)
         top_layout.addWidget(self.clear_done_btn)
 
+        self.clear_list_btn = QPushButton("Clear Download List 🗑️")
+        self.clear_list_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27272a;
+                color: #f87171;
+                border: 1px solid #7f1d1d;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-weight: 700;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #991b1b;
+                color: #ffffff;
+            }
+        """)
+        self.clear_list_btn.setToolTip("Clear finished, failed, or all downloads from the list")
+        self.clear_list_btn.clicked.connect(self._on_clear_list_clicked)
+        top_layout.addWidget(self.clear_list_btn)
+
         self.open_dir_btn = QPushButton("Open Folder 📁")
         self.open_dir_btn.clicked.connect(self._open_downloads_dir)
         top_layout.addWidget(self.open_dir_btn)
@@ -630,6 +650,14 @@ class DownloadsTab(QWidget):
     def _show_context_menu(self, pos: QPoint):
         row = self.table.rowAt(pos.y())
         if row < 0 or row >= len(self.displayed_items):
+            menu = QMenu(self)
+            act_clear_comp = menu.addAction("Clear Completed Downloads 🧹")
+            act_clear_comp.triggered.connect(self._clear_completed)
+            act_clear_inact = menu.addAction("Clear Inactive (Failed & Cancelled) ❌")
+            act_clear_inact.triggered.connect(download_manager.clear_inactive)
+            act_clear_all = menu.addAction("Clear Entire Download List 🗑️")
+            act_clear_all.triggered.connect(self._on_clear_list_clicked)
+            menu.exec(self.table.viewport().mapToGlobal(pos))
             return
 
         item = self.displayed_items[row]
@@ -677,6 +705,12 @@ class DownloadsTab(QWidget):
         act_delete = menu.addAction("Delete File from Disk")
         act_delete.triggered.connect(lambda: self._confirm_delete(item))
 
+        menu.addSeparator()
+        act_clear_comp = menu.addAction("Clear Completed Downloads 🧹")
+        act_clear_comp.triggered.connect(self._clear_completed)
+        act_clear_all = menu.addAction("Clear Entire Download List 🗑️")
+        act_clear_all.triggered.connect(self._on_clear_list_clicked)
+
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def _confirm_delete(self, item: DownloadItem):
@@ -702,6 +736,27 @@ class DownloadsTab(QWidget):
 
     def _clear_completed(self):
         download_manager.clear_completed()
+
+    def _on_clear_list_clicked(self):
+        items = download_manager.items
+        if not items:
+            return
+
+        active_items = [i for i in items if i.status in (STATUS_DOWNLOADING, STATUS_QUEUED)]
+        if active_items:
+            reply = QMessageBox.question(
+                self,
+                "Clear Download List",
+                f"There are {len(active_items)} active or queued download(s) in progress.\n\n"
+                "Do you want to cancel all downloads and clear the entire download list?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            download_manager.clear_all(cancel_active=True)
+        else:
+            download_manager.clear_all(cancel_active=False)
 
     def _open_downloads_dir(self):
         os.makedirs(settings.download_dir, exist_ok=True)

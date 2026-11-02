@@ -520,10 +520,17 @@ class DOSBoxPlayerDialog(QDialog):
         self._gamepad_timer.timeout.connect(self._poll_gamepad)
         self._gamepad_timer.start()
 
+        self._load_retries = 0
+
         self._init_ui()
         self._setup_shortcuts()
         self._fetch_emulator_metadata()
-        self._load_game()
+
+        self._load_timer = QTimer(self)
+        self._load_timer.setSingleShot(True)
+        self._load_timer.setInterval(120)
+        self._load_timer.timeout.connect(self._load_game)
+        self._load_timer.start()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -922,6 +929,8 @@ class DOSBoxPlayerDialog(QDialog):
         super().closeEvent(event)
 
     def _shutdown(self):
+        if hasattr(self, "_load_timer") and self._load_timer.isActive():
+            self._load_timer.stop()
         if hasattr(self, "_gamepad_timer") and self._gamepad_timer.isActive():
             self._gamepad_timer.stop()
         if self._autoboot_timer and self._autoboot_timer.isActive():
@@ -1182,6 +1191,8 @@ class DOSBoxPlayerDialog(QDialog):
 
     def _show_emulation_error_card(self, title: str, message: str):
         """Display an actionable, stylish error card when an item has no online emulator."""
+        if hasattr(self, "_load_timer") and self._load_timer.isActive():
+            self._load_timer.stop()
         if self._autoboot_timer and self._autoboot_timer.isActive():
             self._autoboot_timer.stop()
 
@@ -1218,13 +1229,41 @@ class DOSBoxPlayerDialog(QDialog):
             btn_box.setSpacing(10)
             btn_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            from archivevault.core.utils import get_launchbox_path, launch_launchbox
-            lb_path = get_launchbox_path()
-            if lb_path:
-                self.btn_err_lb = QPushButton("Open LaunchBox 🚀")
-                self.btn_err_lb.setStyleSheet("background-color: #3b82f6; color: #ffffff; font-weight: 700; padding: 6px 14px; border-radius: 5px;")
-                self.btn_err_lb.clicked.connect(lambda: (launch_launchbox(), self.close()))
-                btn_box.addWidget(self.btn_err_lb)
+            self.btn_err_retry = QPushButton("Retry / Reload ↺")
+            self.btn_err_retry.setStyleSheet("""
+                QPushButton {
+                    background-color: #0284c7;
+                    color: #ffffff;
+                    font-weight: 700;
+                    padding: 7px 16px;
+                    border-radius: 6px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #0369a1;
+                }
+            """)
+            self.btn_err_retry.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.btn_err_retry.clicked.connect(self._reload_game)
+            btn_box.addWidget(self.btn_err_retry)
+
+            self.btn_err_ra = QPushButton("Play in Easy Retro ⚡")
+            self.btn_err_ra.setStyleSheet("""
+                QPushButton {
+                    background-color: #7c3aed;
+                    color: #ffffff;
+                    font-weight: 700;
+                    padding: 7px 16px;
+                    border-radius: 6px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #6d28d9;
+                }
+            """)
+            self.btn_err_ra.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.btn_err_ra.clicked.connect(self._launch_easy_retro_fallback)
+            btn_box.addWidget(self.btn_err_ra)
 
             self.btn_err_web = QPushButton("View on Archive.org 🌐")
             self.btn_err_web.setStyleSheet("background-color: #27272a; color: #60a5fa; font-weight: 600; padding: 6px 12px; border: 1px solid #3f3f46; border-radius: 5px;")
@@ -1245,6 +1284,22 @@ class DOSBoxPlayerDialog(QDialog):
         self.loading_overlay.show()
         self.loading_overlay.raise_()
 
+    def _launch_easy_retro_fallback(self):
+        """Launch the current game in RetroArch if a local ROM exists, or open the Easy Retro Station dialog."""
+        from archivevault.core.utils import find_local_game_rom, get_retroarch_path, launch_retroarch
+        from archivevault.ui.retroarch_dialog import EasyRetroDialog
+
+        rom = find_local_game_rom(self.identifier)
+        if rom and os.path.exists(rom):
+            success = launch_retroarch(rom, self.platform_info.get("name"))
+            if success:
+                self.close()
+                return
+
+        dlg = EasyRetroDialog(parent=self.parent())
+        self.close()
+        dlg.exec()
+
     def _load_game(self):
         if self._autoboot_timer and self._autoboot_timer.isActive():
             self._autoboot_timer.stop()
@@ -1262,22 +1317,45 @@ class DOSBoxPlayerDialog(QDialog):
         self.loading_bar.show()
         self.web_view.setUrl(QUrl(embed_url))
 
+    def _retry_game_load(self):
+        if hasattr(self, "error_card"):
+            self.error_card.hide()
+        if hasattr(self, "loading_overlay"):
+            self.loading_overlay.show()
+            self.loading_overlay.raise_()
+        if hasattr(self, "loading_pbar"):
+            self.loading_pbar.show()
+        self.loading_bar.show()
+        embed_url = f"https://archive.org/embed/{self.identifier}"
+        self.web_view.setUrl(QUrl(embed_url))
+
     def _on_load_progress(self, progress: int):
         self.loading_bar.setValue(progress)
 
     def _on_load_finished(self, success: bool):
         self.loading_bar.hide()
         if success:
+            self._load_retries = 0
             self._inject_center_styling()
             self._apply_easy_crt()
             self._apply_aspect_mode()
             self._start_autoboot_poller()
         else:
+            if self._load_retries < 2:
+                self._load_retries += 1
+                if hasattr(self, "loading_status_lbl"):
+                    self.loading_status_lbl.setText(
+                        f"⏳ Connecting to Internet Archive (Attempt {self._load_retries + 1}/3)..."
+                    )
+                QTimer.singleShot(900, self._retry_game_load)
+                return
+
             self._show_emulation_error_card(
                 title="Page Load Failed",
                 message=(
                     f"Could not connect to Internet Archive for <b>'{self.identifier}'</b>.<br><br>"
-                    "Please check your internet connection or verify this item on archive.org."
+                    "Internet Archive may be experiencing high server traffic, or the connection timed out.<br>"
+                    "Click <b>'Retry / Reload ↺'</b> to try again, or launch offline in <b>Easy Retro</b>."
                 )
             )
         self.web_view.setFocus()
@@ -1308,12 +1386,12 @@ class DOSBoxPlayerDialog(QDialog):
 
         def on_result(res):
             if not res:
-                if self._autoboot_attempts >= 15:
+                if self._autoboot_attempts >= 45:  # Give up to 18 seconds for scripts to evaluate
                     self._show_emulation_error_card(
                         title="Online Emulation Not Available",
                         message=(
                             f"<b>'{self.identifier}'</b> does not have an in-browser WebAssembly emulator configured on the Internet Archive.<br><br>"
-                            "Offline MAME and local ROMs should be played through <b>LaunchBox</b> with local arcade cores."
+                            "Offline MAME and local ROMs can be played directly with <b>Easy Retro (RetroArch)</b>."
                         )
                     )
                 return
@@ -1323,7 +1401,7 @@ class DOSBoxPlayerDialog(QDialog):
                 splash = res.get('splash')
 
                 if status == 'no_emulator' or res.get('is404'):
-                    if self._autoboot_attempts >= 8:  # give ~3.2 seconds
+                    if self._autoboot_attempts >= 25:  # give ~10 seconds
                         self._show_emulation_error_card(
                             title="Online Emulation Not Available",
                             message=(
@@ -1907,8 +1985,19 @@ class DOSBoxPlayerDialog(QDialog):
             """)
 
     def _reload_game(self):
+        self._load_retries = 0
         if self._autoboot_timer and self._autoboot_timer.isActive():
             self._autoboot_timer.stop()
+        if hasattr(self, "error_card"):
+            self.error_card.hide()
+        if hasattr(self, "loading_overlay"):
+            self.loading_overlay.show()
+            self.loading_overlay.raise_()
+        if hasattr(self, "loading_pbar"):
+            self.loading_pbar.show()
+        if hasattr(self, "loading_status_lbl"):
+            self.loading_status_lbl.show()
+            self.loading_status_lbl.setText(f"⚡ Preparing {self.platform_info['name']} WebAssembly Engine...")
         self.loading_bar.show()
         self.web_view.reload()
 

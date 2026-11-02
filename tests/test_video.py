@@ -1,7 +1,15 @@
 import os
 import sys
 import unittest
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
+
+if hasattr(Qt.ApplicationAttribute, "AA_ShareOpenGLContexts"):
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+try:
+    import PyQt6.QtWebEngineWidgets
+except ImportError:
+    pass
 
 from archivevault.ui.video_player import VideoPlayerDialog, format_video_time
 from archivevault.ui.main_window import MainWindow
