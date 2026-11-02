@@ -115,24 +115,24 @@ ONLINE_LEGIT_GAMES = [
         "icon": "🦤"
     },
     {
-        "id": "arcade_galaxian",
-        "title": "Galaxian (Arcade 1979)",
+        "id": "arcade_qbert",
+        "title": "Q*Bert (Arcade 1982)",
         "platform": "Arcade",
         "category": "arcade",
         "license": "Arcade Preservation",
         "badge_color": "#dc2626",
-        "desc": "Namco's genre-defining RGB multi-color alien armada shooter.",
-        "icon": "👾"
+        "desc": "Gottlieb's isometric pyramid hopping puzzle classic.",
+        "icon": "🟧"
     },
     {
-        "id": "arcade_frogger",
-        "title": "Frogger (Arcade 1981)",
+        "id": "arcade_astrob",
+        "title": "Astro Blaster (Arcade 1981)",
         "platform": "Arcade",
         "category": "arcade",
         "license": "Arcade Preservation",
         "badge_color": "#dc2626",
-        "desc": "Konami's timeless highway and river hopping arcade puzzle.",
-        "icon": "🐸"
+        "desc": "Sega's pioneering speech-synthesized deep space shooter.",
+        "icon": "🛸"
     },
     {
         "id": "arcade_digdug",
@@ -145,14 +145,24 @@ ONLINE_LEGIT_GAMES = [
         "icon": "⛏️"
     },
     {
-        "id": "arcade_dkong",
-        "title": "Donkey Kong (Arcade 1981)",
+        "id": "arcade_berzerk",
+        "title": "Berzerk (Arcade 1980)",
         "platform": "Arcade",
         "category": "arcade",
         "license": "Arcade Preservation",
         "badge_color": "#dc2626",
-        "desc": "Shigeru Miyamoto's foundational platformer introducing Jumpman.",
-        "icon": "🦍"
+        "desc": "Stern's electrifying robotic maze battle with Evil Otto.",
+        "icon": "🤖"
+    },
+    {
+        "id": "arcade_paperboy",
+        "title": "Paperboy (Arcade 1985)",
+        "platform": "Arcade",
+        "category": "arcade",
+        "license": "Arcade Preservation",
+        "badge_color": "#dc2626",
+        "desc": "Atari's suburban bicycle delivery arcade masterpiece.",
+        "icon": "📰"
     },
     # --- MS-DOS PC CLASSICS ---
     {

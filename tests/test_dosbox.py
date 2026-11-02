@@ -40,9 +40,40 @@ class TestDOSBoxIntegration(unittest.TestCase):
         dialog._show_emulation_error_card("Test Error", "Test message")
         self.assertTrue(hasattr(dialog, "btn_err_retry"))
         self.assertTrue(hasattr(dialog, "btn_err_ra"))
+        self.assertTrue(hasattr(dialog, "btn_err_web"))
+        self.assertTrue(hasattr(dialog, "btn_err_close"))
         self.assertFalse(hasattr(dialog, "btn_err_lb"))
         self.assertIn("Retry", dialog.btn_err_retry.text())
         self.assertIn("Easy Retro", dialog.btn_err_ra.text())
+        self.assertGreaterEqual(dialog.btn_err_retry.minimumWidth(), 140)
+        self.assertGreaterEqual(dialog.btn_err_ra.minimumWidth(), 140)
+
+        # Test gamepad throttling logic: changed=False must not flood IPC
+        from unittest.mock import MagicMock
+        dialog.setVisible(True)
+        dialog.web_view.page().runJavaScript = MagicMock()
+        dialog.gamepad_poller.poll = MagicMock(return_value={
+            "connected": True,
+            "name": "Gamepad",
+            "active_keys_count": 0,
+            "changed": False,
+            "axes": [0, 0, 0, 0],
+            "buttons": [0]*17
+        })
+        dialog._poll_gamepad()
+        dialog.web_view.page().runJavaScript.assert_not_called()
+
+        # When changed=True, runJavaScript should be called
+        dialog.gamepad_poller.poll = MagicMock(return_value={
+            "connected": True,
+            "name": "Gamepad",
+            "active_keys_count": 1,
+            "changed": True,
+            "axes": [0, 0, 0, 0],
+            "buttons": [1.0] + [0]*16
+        })
+        dialog._poll_gamepad()
+        dialog.web_view.page().runJavaScript.assert_called_once()
 
         dialog.close()
 

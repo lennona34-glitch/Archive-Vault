@@ -207,6 +207,35 @@ def detect_retro_platform(identifier: str) -> dict:
         "tip": "DOSBox: Click to lock mouse, use keyboard or controller to play!"
     }
 
+class XINPUT_STATE(ctypes.Structure):
+    _fields_ = [
+        ('dwPacketNumber', wintypes.DWORD),
+        ('wButtons', wintypes.WORD),
+        ('bLeftTrigger', wintypes.BYTE),
+        ('bRightTrigger', wintypes.BYTE),
+        ('sThumbLX', wintypes.SHORT),
+        ('sThumbLY', wintypes.SHORT),
+        ('sThumbRX', wintypes.SHORT),
+        ('sThumbRY', wintypes.SHORT),
+    ]
+
+class JOYINFOEX(ctypes.Structure):
+    _fields_ = [
+        ('dwSize', wintypes.DWORD),
+        ('dwFlags', wintypes.DWORD),
+        ('dwXpos', wintypes.DWORD),
+        ('dwYpos', wintypes.DWORD),
+        ('dwZpos', wintypes.DWORD),
+        ('dwRpos', wintypes.DWORD),
+        ('dwUpos', wintypes.DWORD),
+        ('dwVpos', wintypes.DWORD),
+        ('dwButtons', wintypes.DWORD),
+        ('dwButtonNumber', wintypes.DWORD),
+        ('dwPOV', wintypes.DWORD),
+        ('dwReserved1', wintypes.DWORD),
+        ('dwReserved2', wintypes.DWORD),
+    ]
+
 class GamepadPoller:
     """Zero-dependency Windows controller driver supporting XInput & DirectInput/WinMM."""
     def __init__(self):
@@ -237,17 +266,6 @@ class GamepadPoller:
 
         # 1. Try XInput
         if self.xi:
-            class XINPUT_STATE(ctypes.Structure):
-                _fields_ = [
-                    ('dwPacketNumber', wintypes.DWORD),
-                    ('wButtons', wintypes.WORD),
-                    ('bLeftTrigger', wintypes.BYTE),
-                    ('bRightTrigger', wintypes.BYTE),
-                    ('sThumbLX', wintypes.SHORT),
-                    ('sThumbLY', wintypes.SHORT),
-                    ('sThumbRX', wintypes.SHORT),
-                    ('sThumbRY', wintypes.SHORT),
-                ]
             for user_idx in range(4):
                 state = XINPUT_STATE()
                 if self.xi.XInputGetState(user_idx, ctypes.byref(state)) == 0:
@@ -335,22 +353,6 @@ class GamepadPoller:
         # 2. Try WinMM fallback if XInput didn't connect
         if not connected and self.winmm:
             try:
-                class JOYINFOEX(ctypes.Structure):
-                    _fields_ = [
-                        ('dwSize', wintypes.DWORD),
-                        ('dwFlags', wintypes.DWORD),
-                        ('dwXpos', wintypes.DWORD),
-                        ('dwYpos', wintypes.DWORD),
-                        ('dwZpos', wintypes.DWORD),
-                        ('dwRpos', wintypes.DWORD),
-                        ('dwUpos', wintypes.DWORD),
-                        ('dwVpos', wintypes.DWORD),
-                        ('dwButtons', wintypes.DWORD),
-                        ('dwButtonNumber', wintypes.DWORD),
-                        ('dwPOV', wintypes.DWORD),
-                        ('dwReserved1', wintypes.DWORD),
-                        ('dwReserved2', wintypes.DWORD),
-                    ]
                 for i in range(4):
                     info = JOYINFOEX()
                     info.dwSize = ctypes.sizeof(JOYINFOEX)
@@ -515,8 +517,9 @@ class DOSBoxPlayerDialog(QDialog):
 
         self.gamepad_poller = GamepadPoller()
         self._last_gamepad_state = False
+        self._last_keys_active = False
         self._gamepad_timer = QTimer(self)
-        self._gamepad_timer.setInterval(16)
+        self._gamepad_timer.setInterval(30)
         self._gamepad_timer.timeout.connect(self._poll_gamepad)
         self._gamepad_timer.start()
 
@@ -720,21 +723,25 @@ class DOSBoxPlayerDialog(QDialog):
         header_layout.addWidget(self.browser_btn)
 
         self.close_btn = QPushButton("✕ Exit")
+        self.close_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.close_btn.setMinimumSize(80, 28)
         self.close_btn.setStyleSheet("""
             QPushButton {
                 background-color: #991b1b;
                 color: #ffffff;
                 border: 1px solid #b91c1c;
                 border-radius: 5px;
-                padding: 4px 10px;
+                padding: 4px 12px;
                 font-size: 11px;
                 font-weight: 700;
             }
             QPushButton:hover {
                 background-color: #dc2626;
+                border-color: #ef4444;
             }
         """)
-        self.close_btn.setToolTip("Close game and return to ArchiveVault")
+        self.close_btn.setToolTip("Close game and return to ArchiveVault (Esc)")
         self.close_btn.clicked.connect(self.close)
         header_layout.addWidget(self.close_btn)
 
@@ -914,8 +921,13 @@ class DOSBoxPlayerDialog(QDialog):
                 self._toggle_fullscreen()
                 event.accept()
                 return
-            # Let the game / webview receive Esc to free mouse or handle in-game pause menu without closing dialog
-            event.ignore()
+            # Safely release pointer lock if active, then close the arcade window
+            try:
+                self.web_view.page().runJavaScript("if (document.exitPointerLock) document.exitPointerLock();")
+            except Exception:
+                pass
+            self.close()
+            event.accept()
             return
         super().keyPressEvent(event)
 
@@ -933,7 +945,7 @@ class DOSBoxPlayerDialog(QDialog):
             self._load_timer.stop()
         if hasattr(self, "_gamepad_timer") and self._gamepad_timer.isActive():
             self._gamepad_timer.stop()
-        if self._autoboot_timer and self._autoboot_timer.isActive():
+        if hasattr(self, "_autoboot_timer") and self._autoboot_timer and self._autoboot_timer.isActive():
             self._autoboot_timer.stop()
         try:
             self.web_page.setAudioMuted(True)
@@ -1003,7 +1015,7 @@ class DOSBoxPlayerDialog(QDialog):
         self.web_view.page().runJavaScript(f"window.__av_set_aspect && window.__av_set_aspect('{mode}');")
 
     def _poll_gamepad(self):
-        if not hasattr(self, "gamepad_poller"):
+        if not hasattr(self, "gamepad_poller") or not self.isVisible():
             return
         try:
             state = self.gamepad_poller.poll()
@@ -1012,10 +1024,13 @@ class DOSBoxPlayerDialog(QDialog):
             active_keys = state["active_keys_count"]
             changed = state["changed"]
 
-            if connected != self._last_gamepad_state or active_keys > 0:
+            # Update badge only on state changes to conserve UI thread resources
+            is_active = (active_keys > 0)
+            if connected != self._last_gamepad_state or is_active != getattr(self, "_last_keys_active", False):
                 self._last_gamepad_state = connected
+                self._last_keys_active = is_active
                 if connected:
-                    if active_keys > 0:
+                    if is_active:
                         self.gamepad_badge.setText(f"🎮 Active ({active_keys})")
                         self.gamepad_badge.setStyleSheet("""
                             background-color: #064e3b;
@@ -1049,7 +1064,8 @@ class DOSBoxPlayerDialog(QDialog):
                         border-radius: 4px;
                     """)
 
-            if connected:
+            # CRITICAL: Only dispatch runJavaScript across IPC when inputs or connection state CHANGED!
+            if connected and changed:
                 payload = json.dumps(state)
                 self.web_view.page().runJavaScript(f"window.__av_controller_tick && window.__av_controller_tick({payload});")
         except Exception:
@@ -1063,6 +1079,14 @@ class DOSBoxPlayerDialog(QDialog):
             pass
 
     def _setup_shortcuts(self):
+        # Escape key exits fullscreen or safely closes arcade player
+        esc_sc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        esc_sc.activated.connect(self._handle_esc_shortcut)
+
+        # Alt+F4 closes dialog
+        close_sc = QShortcut(QKeySequence("Alt+F4"), self)
+        close_sc.activated.connect(self.close)
+
         # F11 toggles Fullscreen
         f11_sc = QShortcut(QKeySequence(Qt.Key.Key_F11), self)
         f11_sc.activated.connect(self._toggle_fullscreen)
@@ -1082,6 +1106,16 @@ class DOSBoxPlayerDialog(QDialog):
         # Ctrl+R reloads
         reload_sc = QShortcut(QKeySequence("Ctrl+R"), self)
         reload_sc.activated.connect(self._reload_game)
+
+    def _handle_esc_shortcut(self):
+        if self.is_custom_fullscreen:
+            self._toggle_fullscreen()
+            return
+        try:
+            self.web_view.page().runJavaScript("if (document.exitPointerLock) document.exitPointerLock();")
+        except Exception:
+            pass
+        self.close()
 
     def _fetch_emulator_metadata(self):
         """Asynchronously query item metadata to detect specific emulators and start commands."""
@@ -1207,75 +1241,124 @@ class DOSBoxPlayerDialog(QDialog):
                 QFrame {
                     background-color: #18181b;
                     border: 1px solid #ef4444;
-                    border-radius: 10px;
-                    padding: 20px;
-                    max-width: 520px;
+                    border-radius: 12px;
+                    padding: 24px;
+                    max-width: 580px;
                 }
             """)
             err_layout = QVBoxLayout(self.error_card)
-            err_layout.setSpacing(14)
+            err_layout.setSpacing(16)
 
             self.err_badge = QLabel("❌ Online Emulation Not Found")
-            self.err_badge.setStyleSheet("color: #ef4444; font-size: 16px; font-weight: 800; background: transparent;")
+            self.err_badge.setStyleSheet("color: #ef4444; font-size: 17px; font-weight: 800; background: transparent;")
             self.err_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             err_layout.addWidget(self.err_badge)
 
             self.err_msg_lbl = QLabel()
-            self.err_msg_lbl.setStyleSheet("color: #d4d4d8; font-size: 12px; line-height: 1.5; background: transparent;")
+            self.err_msg_lbl.setStyleSheet("color: #d4d4d8; font-size: 13px; line-height: 1.6; background: transparent;")
             self.err_msg_lbl.setWordWrap(True)
+            self.err_msg_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             err_layout.addWidget(self.err_msg_lbl)
 
-            btn_box = QHBoxLayout()
-            btn_box.setSpacing(10)
-            btn_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            # Two spacious, clearly organized rows of action buttons to prevent squashing
+            row1_box = QHBoxLayout()
+            row1_box.setSpacing(12)
+            row1_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             self.btn_err_retry = QPushButton("Retry / Reload ↺")
+            self.btn_err_retry.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.btn_err_retry.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.btn_err_retry.setMinimumSize(160, 40)
             self.btn_err_retry.setStyleSheet("""
                 QPushButton {
                     background-color: #0284c7;
                     color: #ffffff;
                     font-weight: 700;
-                    padding: 7px 16px;
-                    border-radius: 6px;
-                    font-size: 12px;
+                    padding: 8px 18px;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    border: 1px solid #0ea5e9;
                 }
                 QPushButton:hover {
                     background-color: #0369a1;
+                    border-color: #38bdf8;
                 }
             """)
-            self.btn_err_retry.setCursor(Qt.CursorShape.PointingHandCursor)
             self.btn_err_retry.clicked.connect(self._reload_game)
-            btn_box.addWidget(self.btn_err_retry)
+            row1_box.addWidget(self.btn_err_retry)
 
             self.btn_err_ra = QPushButton("Play in Easy Retro ⚡")
+            self.btn_err_ra.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.btn_err_ra.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.btn_err_ra.setMinimumSize(170, 40)
             self.btn_err_ra.setStyleSheet("""
                 QPushButton {
                     background-color: #7c3aed;
                     color: #ffffff;
                     font-weight: 700;
+                    padding: 8px 18px;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    border: 1px solid #8b5cf6;
+                }
+                QPushButton:hover {
+                    background-color: #6d28d9;
+                    border-color: #a78bfa;
+                }
+            """)
+            self.btn_err_ra.clicked.connect(self._launch_easy_retro_fallback)
+            row1_box.addWidget(self.btn_err_ra)
+            err_layout.addLayout(row1_box)
+
+            row2_box = QHBoxLayout()
+            row2_box.setSpacing(12)
+            row2_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            self.btn_err_web = QPushButton("View on Archive.org 🌐")
+            self.btn_err_web.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.btn_err_web.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.btn_err_web.setMinimumSize(160, 36)
+            self.btn_err_web.setStyleSheet("""
+                QPushButton {
+                    background-color: #27272a;
+                    color: #93c5fd;
+                    font-weight: 600;
                     padding: 7px 16px;
+                    border: 1px solid #3f3f46;
                     border-radius: 6px;
                     font-size: 12px;
                 }
                 QPushButton:hover {
-                    background-color: #6d28d9;
+                    background-color: #3f3f46;
+                    color: #bfdbfe;
                 }
             """)
-            self.btn_err_ra.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.btn_err_ra.clicked.connect(self._launch_easy_retro_fallback)
-            btn_box.addWidget(self.btn_err_ra)
-
-            self.btn_err_web = QPushButton("View on Archive.org 🌐")
-            self.btn_err_web.setStyleSheet("background-color: #27272a; color: #60a5fa; font-weight: 600; padding: 6px 12px; border: 1px solid #3f3f46; border-radius: 5px;")
             self.btn_err_web.clicked.connect(self._open_in_browser)
-            btn_box.addWidget(self.btn_err_web)
+            row2_box.addWidget(self.btn_err_web)
 
-            self.btn_err_close = QPushButton("Close ✕")
-            self.btn_err_close.setStyleSheet("background-color: #3f3f46; color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 5px;")
+            self.btn_err_close = QPushButton("Close Arcade ✕")
+            self.btn_err_close.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.btn_err_close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.btn_err_close.setMinimumSize(140, 36)
+            self.btn_err_close.setStyleSheet("""
+                QPushButton {
+                    background-color: #3f3f46;
+                    color: #f4f4f5;
+                    font-weight: 600;
+                    padding: 7px 16px;
+                    border: 1px solid #52525b;
+                    border-radius: 6px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #52525b;
+                    color: #ffffff;
+                }
+            """)
             self.btn_err_close.clicked.connect(self.close)
-            btn_box.addWidget(self.btn_err_close)
+            row2_box.addWidget(self.btn_err_close)
+            err_layout.addLayout(row2_box)
 
-            err_layout.addLayout(btn_box)
             self.loading_overlay.layout().addWidget(self.error_card)
 
         self.err_badge.setText(f"❌ {title}")
@@ -1826,9 +1909,6 @@ class DOSBoxPlayerDialog(QDialog):
                             target.tabIndex = 1;
                             target.focus();
                         } catch(e) {}
-                        if (target.requestPointerLock && document.pointerLockElement !== target) {
-                            try { target.requestPointerLock(); } catch(e) {}
-                        }
                     });
                 }
             }
@@ -1888,9 +1968,6 @@ class DOSBoxPlayerDialog(QDialog):
             }
 
             // --- Main Auto-Boot Trigger ---
-            if (window.__av_boot_dispatched === undefined) {
-                window.__av_boot_dispatched = false;
-            }
             window.__av_boot = function() {
                 try {
                     var btn = document.getElementById('jsmessSS');
@@ -1926,14 +2003,26 @@ class DOSBoxPlayerDialog(QDialog):
                         return { status: 'running', w: can.width, h: can.height };
                     }
 
-                    // 2. Click start button as soon as Archive.org jQuery handler is ready
-                    if (window.$ && window.$._data && btn) {
-                        var evData = window.$._data(btn, 'events');
-                        if (evData && evData.click && evData.click.length > 0) {
-                            if (!window.__av_boot_dispatched) {
-                                window.__av_boot_dispatched = true;
-                                window.$(btn).trigger('click');
-                            }
+                    // 2. Autoboot: Aggressively trigger start button / click targets across Archive.org emulators
+                    var startTargets = [
+                        document.getElementById('jsmessSS'),
+                        document.querySelector('.js-emulation-emulate'),
+                        document.querySelector('.emularity-splash-screen'),
+                        document.querySelector('button[data-action="start"]'),
+                        document.querySelector('.ia-module button'),
+                        document.getElementById('screenshot')
+                    ];
+                    for (var sIdx = 0; sIdx < startTargets.length; sIdx++) {
+                        var st = startTargets[sIdx];
+                        if (st) {
+                            try { st.click(); } catch(e) {}
+                            try {
+                                var ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+                                st.dispatchEvent(ev);
+                            } catch(e) {}
+                            try {
+                                if (window.$) window.$(st).trigger('click');
+                            } catch(e) {}
                         }
                     }
 
