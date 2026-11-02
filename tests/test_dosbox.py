@@ -234,5 +234,53 @@ class TestDOSBoxIntegration(unittest.TestCase):
         self.assertIn("vice_xscpu64_libretro.dll", CORE_DISPLAY_NAMES)
         self.assertIn("SuperCPU", CORE_DISPLAY_NAMES["vice_xscpu64_libretro.dll"])
 
+    def test_game_routing_rules_dos_mame_retroarch(self):
+        from unittest.mock import patch
+        from archivevault.ui.arcade_tab import ArcadeTab
+        tab = ArcadeTab()
+
+        # 1. DOS games MUST trigger play_dosbox_requested
+        dos_card = {
+            "id": "msdos_Prince_of_Persia_1990",
+            "title": "Prince of Persia",
+            "platform": "MS-DOS",
+            "category": "dos"
+        }
+        emitted = []
+        tab.play_dosbox_requested.connect(lambda i, t: emitted.append((i, t)))
+        tab._launch_classic_card(dos_card)
+        self.assertEqual(len(emitted), 1)
+        self.assertEqual(emitted[0][0], "msdos_Prince_of_Persia_1990")
+
+        # 2. Arcade games must route to MAME and NEVER trigger play_dosbox_requested
+        emitted.clear()
+        arcade_card = {
+            "id": "arcade_outrun",
+            "title": "Out Run",
+            "platform": "Arcade",
+            "category": "arcade"
+        }
+        with patch("archivevault.core.utils.launch_mame_game") as mock_mame:
+            mock_mame.return_value = True
+            tab._launch_classic_card(arcade_card)
+            self.assertEqual(len(emitted), 0)
+            mock_mame.assert_called_once()
+
+        # 3. Atari / Amiga / C64 games must route to RetroArch and NEVER trigger play_dosbox_requested
+        emitted.clear()
+        c64_card = {
+            "id": "c64_giana_sisters",
+            "title": "The Great Giana Sisters",
+            "platform": "Commodore 64",
+            "category": "computers"
+        }
+        with patch("archivevault.core.utils.find_local_game_rom", return_value="C:/roms/giana.d64"), \
+             patch("os.path.exists", return_value=True), \
+             patch("archivevault.core.utils.launch_retroarch") as mock_ra:
+            mock_ra.return_value = True
+            tab._launch_classic_card(c64_card)
+            self.assertEqual(len(emitted), 0)
+            mock_ra.assert_called_once()
+
 if __name__ == "__main__":
     unittest.main()

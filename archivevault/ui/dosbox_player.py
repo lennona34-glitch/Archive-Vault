@@ -11,7 +11,7 @@ from typing import Optional
 # Ensure Chromium autoplay and audio features are enabled before WebEngine initializes
 os.environ.setdefault(
     "QTWEBENGINE_CHROMIUM_FLAGS",
-    "--autoplay-policy=no-user-gesture-required --disable-features=AudioServiceOutOfProcess"
+    "--autoplay-policy=no-user-gesture-required --enable-features=SharedArrayBuffer"
 )
 from PyQt6.QtCore import QSettings, QSize, Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QShortcut
@@ -710,12 +710,44 @@ class DOSBoxPlayerDialog(QDialog):
         self.web_view.setStyleSheet("background-color: #000000; border: none;")
         self.web_page = DOSBoxWebPage(self.web_view.page().profile(), self.web_view)
         self.web_view.setPage(self.web_page)
+        self.web_page.setAudioMuted(False)
         self.web_page.fullscreen_toggled.connect(self._on_html5_fullscreen)
 
         # Early CSS & Gamepad injection via QWebEngineScript at DocumentCreation
         early_script = QWebEngineScript()
         early_script.setName("av_early_suppress")
         early_script.setSourceCode("""
+            // Unmute cookie for Archive.org Emularity engine
+            try {
+                document.cookie = "unmute=1; path=/; max-age=31536000";
+                document.cookie = "unmute=1; path=/details; max-age=31536000";
+                document.cookie = "unmute=1; path=/embed; max-age=31536000";
+            } catch(e) {}
+
+            // Auto-resume WebAudio AudioContext immediately upon instantiation
+            try {
+                var _AC = window.AudioContext || window.webkitAudioContext;
+                if (_AC) {
+                    window.__av_audio_contexts = window.__av_audio_contexts || [];
+                    var PatchedAC = function() {
+                        var ctx = new _AC();
+                        window.__av_audio_contexts.push(ctx);
+                        if (ctx.state === 'suspended') {
+                            ctx.resume().catch(function() {});
+                        }
+                        ctx.addEventListener('statechange', function() {
+                            if (ctx.state === 'suspended') {
+                                ctx.resume().catch(function() {});
+                            }
+                        });
+                        return ctx;
+                    };
+                    PatchedAC.prototype = _AC.prototype;
+                    window.AudioContext = PatchedAC;
+                    window.webkitAudioContext = PatchedAC;
+                }
+            } catch(e) {}
+
             // Early CSS to suppress splash and zero borders before 1st paint
             var style = document.createElement('style');
             style.id = 'av-early-style';
@@ -1833,7 +1865,7 @@ class DOSBoxPlayerDialog(QDialog):
                             keyCode: item[3],
                             which: item[3],
                             repeat: !!item[4],
-                            bubbles: true,
+                            bubbles: false,
                             cancelable: true,
                             view: window
                         });
@@ -1841,11 +1873,14 @@ class DOSBoxPlayerDialog(QDialog):
                             Object.defineProperty(kev, 'keyCode', { get: function() { return item[3]; } });
                             Object.defineProperty(kev, 'which', { get: function() { return item[3]; } });
                         } catch(e) {}
-                        if (canK) canK.dispatchEvent(kev);
-                        document.dispatchEvent(kev);
-                        window.dispatchEvent(kev);
+                        if (canK) {
+                            canK.dispatchEvent(kev);
+                        } else {
+                            document.dispatchEvent(kev);
+                        }
                     }
                 }
+                if (window.__av_unmute_audio) window.__av_unmute_audio();
             };
 
             // --- Pointer Lock Setup for Mouse-Controlled Retro Games ---
@@ -1921,14 +1956,63 @@ class DOSBoxPlayerDialog(QDialog):
             // Audio Unmuler and AudioContext Resumer
             window.__av_unmute_audio = function() {
                 try {
-                    if (window.rr && typeof window.rr.unmute === 'function') {
-                        window.rr.unmute();
+                    // 1. Archive.org Emularity Unmute
+                    if (window.rr) {
+                        if (typeof window.rr.setMute === 'function') window.rr.setMute(false);
+                        if (typeof window.rr.unmute === 'function') window.rr.unmute();
                     }
-                    if (window.Module && window.Module.audioContext && window.Module.audioContext.state === 'suspended') {
-                        window.Module.audioContext.resume();
+                    var muteClick = document.querySelector('.js-emulation-mute-click');
+                    var muteIcon = document.querySelector('.iconochive-mute');
+                    if (muteIcon && muteIcon.style.display !== 'none' && muteClick) {
+                        try { muteClick.click(); } catch(e) {}
+                    }
+
+                    // 2. Emscripten & SDL AudioContext Resumption
+                    if (window.Module) {
+                        if (window.Module.SDL2 && window.Module.SDL2.audioContext && window.Module.SDL2.audioContext.state === 'suspended') {
+                            window.Module.SDL2.audioContext.resume().catch(function() {});
+                        }
+                        if (window.Module.audioContext && window.Module.audioContext.state === 'suspended') {
+                            window.Module.audioContext.resume().catch(function() {});
+                        }
+                    }
+
+                    // 3. Tracked WebAudio Contexts
+                    if (window.__av_audio_contexts) {
+                        for (var i = 0; i < window.__av_audio_contexts.length; i++) {
+                            var ctx = window.__av_audio_contexts[i];
+                            if (ctx && ctx.state === 'suspended') {
+                                ctx.resume().catch(function() {});
+                            }
+                        }
                     }
                 } catch(e) {}
             };
+
+            // Prevent inadvertent pause from freezing the game loop
+            function guardPause() {
+                try {
+                    if (window.Module && window.Module.pauseMainLoop && !window.Module.__av_pause_guarded) {
+                        window.Module.__av_pause_guarded = true;
+                        var origPause = window.Module.pauseMainLoop;
+                        window.Module.pauseMainLoop = function() {
+                            if (window.__av_explicit_pause) {
+                                origPause.apply(this, arguments);
+                            }
+                        };
+                    }
+                    if (window.rr && window.rr.pause && !window.rr.__av_pause_guarded) {
+                        window.rr.__av_pause_guarded = true;
+                        var origRrPause = window.rr.pause;
+                        window.rr.pause = function() {
+                            if (window.__av_explicit_pause) {
+                                origRrPause.apply(this, arguments);
+                            }
+                        };
+                    }
+                } catch(e) {}
+            }
+            setInterval(guardPause, 500);
 
             // --- Main Auto-Boot Trigger ---
             window.__av_boot = function() {

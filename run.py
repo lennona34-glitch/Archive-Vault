@@ -4,7 +4,7 @@ import sys
 # Crucial: QtWebEngine autoplay and audio flags set before any components initialize
 os.environ.setdefault(
     "QTWEBENGINE_CHROMIUM_FLAGS",
-    "--autoplay-policy=no-user-gesture-required --disable-features=AudioServiceOutOfProcess"
+    "--autoplay-policy=no-user-gesture-required --enable-features=SharedArrayBuffer"
 )
 
 from PyQt6.QtCore import Qt

@@ -349,10 +349,55 @@ class MainWindow(QMainWindow):
         download_manager.item_progress.connect(self._on_progress_update)
 
     def _launch_dosbox_player(self, identifier: str, title: str):
-        """Open the embedded retro gaming theater for MS-DOS and emulated software."""
+        """Open the retro gaming player, automatically routing non-DOS games to MAME or RetroArch."""
         if hasattr(self, "audio_player") and self.audio_player.is_playing():
             self.audio_player.player.pause()
 
+        import os
+        from archivevault.ui.dosbox_player import detect_retro_platform
+        from archivevault.core.utils import (
+            find_local_game_rom,
+            get_mame_path,
+            launch_mame_game,
+            get_retroarch_path,
+            launch_retroarch
+        )
+
+        plat = detect_retro_platform(identifier)
+        plat_name = plat.get("name", "MS-DOS")
+
+        # 1. MAME / Arcade Games -> Send to MAME automatically!
+        if plat_name == "Arcade" or identifier.startswith("arcade_"):
+            rom = find_local_game_rom(identifier)
+            if rom and os.path.exists(rom):
+                if get_mame_path():
+                    launch_mame_game(rom)
+                    return
+                elif get_retroarch_path():
+                    launch_retroarch(rom, "Arcade")
+                    return
+            elif get_mame_path():
+                launch_mame_game(identifier)
+                return
+            else:
+                from archivevault.ui.mame_installer_dialog import MameInstallerDialog
+                dlg = MameInstallerDialog(self)
+                dlg.exec()
+                return
+
+        # 2. All other Non-DOS Games (Atari ST, Amiga, C64, Spectrum, Amstrad, Consoles) -> Send to RetroArch automatically!
+        if plat_name != "MS-DOS" and not identifier.startswith("msdos_"):
+            rom = find_local_game_rom(identifier)
+            if rom and os.path.exists(rom):
+                if get_retroarch_path():
+                    launch_retroarch(rom, plat_name)
+                    return
+            from archivevault.ui.retroarch_dialog import EasyRetroDialog
+            dlg = EasyRetroDialog(self)
+            dlg.exec()
+            return
+
+        # 3. DOS Games ONLY -> Open in DOSBox player dialog
         try:
             from archivevault.ui.dosbox_player import DOSBoxPlayerDialog
             dialog = DOSBoxPlayerDialog(identifier, title, parent=self)
