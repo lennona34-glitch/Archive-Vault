@@ -211,5 +211,28 @@ class TestDOSBoxIntegration(unittest.TestCase):
         self.assertIn("Easy Retro", dlg.windowTitle())
         dlg.close()
 
+    def test_force_close_and_gamepad_non_blocking(self):
+        from archivevault.core.utils import CORE_DISPLAY_NAMES
+        dialog = DOSBoxPlayerDialog(
+            identifier="arcade_outrun",
+            title="Out Run (Arcade 1986)"
+        )
+        self.assertFalse(hasattr(dialog.gamepad_poller, "winmm"))
+        self.assertTrue(dialog._gamepad_timer.isActive())
+
+        # Test error card close button binding
+        dialog._show_emulation_error_card("Test Error", "Test message")
+        self.assertTrue(hasattr(dialog, "btn_err_close"))
+
+        # Verify _force_close stops timers safely and closes
+        dialog._force_close()
+        self.assertFalse(dialog._gamepad_timer.isActive())
+        if hasattr(dialog, "_autoboot_timer") and dialog._autoboot_timer:
+            self.assertFalse(dialog._autoboot_timer.isActive())
+
+        # Verify VICE SuperCPU core display name
+        self.assertIn("vice_xscpu64_libretro.dll", CORE_DISPLAY_NAMES)
+        self.assertIn("SuperCPU", CORE_DISPLAY_NAMES["vice_xscpu64_libretro.dll"])
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,10 +2,17 @@ import ctypes
 from ctypes import wintypes
 import json
 import math
+import os
 import sys
 import time
 import webbrowser
 from typing import Optional
+
+# Ensure Chromium autoplay and audio features are enabled before WebEngine initializes
+os.environ.setdefault(
+    "QTWEBENGINE_CHROMIUM_FLAGS",
+    "--autoplay-policy=no-user-gesture-required --disable-features=AudioServiceOutOfProcess"
+)
 from PyQt6.QtCore import QSettings, QSize, Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QShortcut
 from PyQt6.QtWebEngineCore import (
@@ -219,25 +226,8 @@ class XINPUT_STATE(ctypes.Structure):
         ('sThumbRY', wintypes.SHORT),
     ]
 
-class JOYINFOEX(ctypes.Structure):
-    _fields_ = [
-        ('dwSize', wintypes.DWORD),
-        ('dwFlags', wintypes.DWORD),
-        ('dwXpos', wintypes.DWORD),
-        ('dwYpos', wintypes.DWORD),
-        ('dwZpos', wintypes.DWORD),
-        ('dwRpos', wintypes.DWORD),
-        ('dwUpos', wintypes.DWORD),
-        ('dwVpos', wintypes.DWORD),
-        ('dwButtons', wintypes.DWORD),
-        ('dwButtonNumber', wintypes.DWORD),
-        ('dwPOV', wintypes.DWORD),
-        ('dwReserved1', wintypes.DWORD),
-        ('dwReserved2', wintypes.DWORD),
-    ]
-
 class GamepadPoller:
-    """Zero-dependency Windows controller driver supporting XInput & DirectInput/WinMM."""
+    """Zero-dependency Windows controller driver supporting XInput with zero latency."""
     def __init__(self):
         self.xi = None
         for dll in ["xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"]:
@@ -246,7 +236,6 @@ class GamepadPoller:
                 break
             except Exception:
                 pass
-        self.winmm = getattr(ctypes.windll, "winmm", None)
         self.connected = False
         self.controller_name = "None"
         self.last_keys = set()
@@ -264,7 +253,7 @@ class GamepadPoller:
         mdx, mdy = 0, 0
         m_left, m_right = False, False
 
-        # 1. Try XInput
+        # Try XInput (fast, sub-millisecond, non-blocking)
         if self.xi:
             for user_idx in range(4):
                 state = XINPUT_STATE()
@@ -349,53 +338,6 @@ class GamepadPoller:
                     if btn & 0x0200:
                         keys.add(('1', 'Digit1', 49))
                     break
-
-        # 2. Try WinMM fallback if XInput didn't connect
-        if not connected and self.winmm:
-            try:
-                for i in range(4):
-                    info = JOYINFOEX()
-                    info.dwSize = ctypes.sizeof(JOYINFOEX)
-                    info.dwFlags = 0xFF
-                    if self.winmm.joyGetPosEx(i, ctypes.byref(info)) == 0:
-                        connected = True
-                        name = f"DirectInput Joystick {i + 1}"
-
-                        norm_x = (info.dwXpos - 32767) / 32767.0
-                        norm_y = (info.dwYpos - 32767) / 32767.0
-                        axes[0] = round(norm_x, 3)
-                        axes[1] = round(norm_y, 3)
-
-                        if info.dwXpos < 18000:
-                            keys.add(('ArrowLeft', 'ArrowLeft', 37))
-                        elif info.dwXpos > 47000:
-                            keys.add(('ArrowRight', 'ArrowRight', 39))
-                        if info.dwYpos < 18000:
-                            keys.add(('ArrowUp', 'ArrowUp', 38))
-                        elif info.dwYpos > 47000:
-                            keys.add(('ArrowDown', 'ArrowDown', 40))
-
-                        for b_idx in range(16):
-                            if info.dwButtons & (1 << b_idx):
-                                buttons[b_idx] = 1.0
-
-                        if info.dwButtons & 0x01:
-                            keys.add(('Control', 'ControlLeft', 17))
-                            m_left = True
-                        if info.dwButtons & 0x02:
-                            keys.add(('Alt', 'AltLeft', 18))
-                            m_right = True
-                        if info.dwButtons & 0x04:
-                            keys.add((' ', 'Space', 32))
-                        if info.dwButtons & 0x08:
-                            keys.add(('Shift', 'ShiftLeft', 16))
-                        if info.dwButtons & 0x10:
-                            keys.add(('Enter', 'Enter', 13))
-                        if info.dwButtons & 0x20:
-                            keys.add(('Escape', 'Escape', 27))
-                        break
-            except Exception:
-                pass
 
         # Typematic repeat calculation
         released_keys = self.last_keys - keys
@@ -519,7 +461,7 @@ class DOSBoxPlayerDialog(QDialog):
         self._last_gamepad_state = False
         self._last_keys_active = False
         self._gamepad_timer = QTimer(self)
-        self._gamepad_timer.setInterval(30)
+        self._gamepad_timer.setInterval(50)
         self._gamepad_timer.timeout.connect(self._poll_gamepad)
         self._gamepad_timer.start()
 
@@ -742,7 +684,7 @@ class DOSBoxPlayerDialog(QDialog):
             }
         """)
         self.close_btn.setToolTip("Close game and return to ArchiveVault (Esc)")
-        self.close_btn.clicked.connect(self.close)
+        self.close_btn.clicked.connect(self._force_close)
         header_layout.addWidget(self.close_btn)
 
         main_layout.addWidget(self.header_bar)
@@ -921,15 +863,15 @@ class DOSBoxPlayerDialog(QDialog):
                 self._toggle_fullscreen()
                 event.accept()
                 return
-            # Safely release pointer lock if active, then close the arcade window
-            try:
-                self.web_view.page().runJavaScript("if (document.exitPointerLock) document.exitPointerLock();")
-            except Exception:
-                pass
-            self.close()
+            self._force_close()
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def _force_close(self):
+        """Immediately and safely shut down all emulation timers and close dialog without freezing."""
+        self._shutdown()
+        self.accept()
 
     def reject(self):
         self._shutdown()
@@ -949,6 +891,7 @@ class DOSBoxPlayerDialog(QDialog):
             self._autoboot_timer.stop()
         try:
             self.web_page.setAudioMuted(True)
+            self.web_view.page().runJavaScript("if (document.exitPointerLock) document.exitPointerLock();")
             self.web_view.stop()
             self.web_view.setUrl(QUrl("about:blank"))
         except Exception:
@@ -1085,7 +1028,11 @@ class DOSBoxPlayerDialog(QDialog):
 
         # Alt+F4 closes dialog
         close_sc = QShortcut(QKeySequence("Alt+F4"), self)
-        close_sc.activated.connect(self.close)
+        close_sc.activated.connect(self._force_close)
+
+        # Ctrl+W closes dialog
+        close_w_sc = QShortcut(QKeySequence("Ctrl+W"), self)
+        close_w_sc.activated.connect(self._force_close)
 
         # F11 toggles Fullscreen
         f11_sc = QShortcut(QKeySequence(Qt.Key.Key_F11), self)
@@ -1111,11 +1058,7 @@ class DOSBoxPlayerDialog(QDialog):
         if self.is_custom_fullscreen:
             self._toggle_fullscreen()
             return
-        try:
-            self.web_view.page().runJavaScript("if (document.exitPointerLock) document.exitPointerLock();")
-        except Exception:
-            pass
-        self.close()
+        self._force_close()
 
     def _fetch_emulator_metadata(self):
         """Asynchronously query item metadata to detect specific emulators and start commands."""
@@ -1355,7 +1298,7 @@ class DOSBoxPlayerDialog(QDialog):
                     color: #ffffff;
                 }
             """)
-            self.btn_err_close.clicked.connect(self.close)
+            self.btn_err_close.clicked.connect(self._force_close)
             row2_box.addWidget(self.btn_err_close)
             err_layout.addLayout(row2_box)
 
@@ -1376,11 +1319,11 @@ class DOSBoxPlayerDialog(QDialog):
         if rom and os.path.exists(rom):
             success = launch_retroarch(rom, self.platform_info.get("name"))
             if success:
-                self.close()
+                self._force_close()
                 return
 
         dlg = EasyRetroDialog(parent=self.parent())
-        self.close()
+        self._force_close()
         dlg.exec()
 
     def _load_game(self):
@@ -1398,6 +1341,10 @@ class DOSBoxPlayerDialog(QDialog):
             self.error_card.hide()
         embed_url = f"https://archive.org/embed/{self.identifier}"
         self.loading_bar.show()
+        try:
+            self.web_page.runJavaScript("window.__av_start_triggered = false;")
+        except Exception:
+            pass
         self.web_view.setUrl(QUrl(embed_url))
 
     def _retry_game_load(self):
@@ -1449,27 +1396,29 @@ class DOSBoxPlayerDialog(QDialog):
             self._autoboot_timer.stop()
         self._autoboot_attempts = 0
         self._autoboot_timer = QTimer(self)
-        self._autoboot_timer.setInterval(400)
+        self._autoboot_timer.setInterval(600)
         self._autoboot_timer.timeout.connect(self._poll_autoboot)
         self._autoboot_timer.start()
 
     def _poll_autoboot(self):
         self._autoboot_attempts += 1
-        if self._autoboot_attempts > 120:  # Allow up to 60 seconds
+        if self._autoboot_attempts > 55:  # Allow up to ~33 seconds
             if self._autoboot_timer:
                 self._autoboot_timer.stop()
             self._show_emulation_error_card(
                 title="Emulation Timed Out",
                 message=(
-                    f"The game <b>'{self.identifier}'</b> did not start rendering within 60 seconds.<br><br>"
-                    "Internet Archive may be experiencing high server load, or this item may require local emulation."
+                    f"The game <b>'{self.identifier}'</b> did not start rendering within 30 seconds.<br><br>"
+                    "Internet Archive may be experiencing high server load, or this item may require local emulation in <b>Easy Retro (RetroArch)</b>."
                 )
             )
             return
 
         def on_result(res):
             if not res:
-                if self._autoboot_attempts >= 45:  # Give up to 18 seconds for scripts to evaluate
+                if self._autoboot_attempts >= 25:  # ~15 seconds for scripts
+                    if self._autoboot_timer:
+                        self._autoboot_timer.stop()
                     self._show_emulation_error_card(
                         title="Online Emulation Not Available",
                         message=(
@@ -1484,12 +1433,14 @@ class DOSBoxPlayerDialog(QDialog):
                 splash = res.get('splash')
 
                 if status == 'no_emulator' or res.get('is404'):
-                    if self._autoboot_attempts >= 25:  # give ~10 seconds
+                    if self._autoboot_attempts >= 6:  # ~3.6 seconds to detect 404
+                        if self._autoboot_timer:
+                            self._autoboot_timer.stop()
                         self._show_emulation_error_card(
                             title="Online Emulation Not Available",
                             message=(
                                 f"<b>'{self.identifier}'</b> does not have an in-browser WebAssembly emulator on the Internet Archive.<br><br>"
-                                "This happens when opening an offline ROM file (like MAME non-merged zips) rather than a pre-configured Internet Arcade game."
+                                "This happens when opening an offline ROM file (like MAME non-merged zips or microcomputer disk images) rather than a pre-configured Internet Arcade game."
                             )
                         )
                         return
@@ -1967,6 +1918,18 @@ class DOSBoxPlayerDialog(QDialog):
                 });
             }
 
+            // Audio Unmuler and AudioContext Resumer
+            window.__av_unmute_audio = function() {
+                try {
+                    if (window.rr && typeof window.rr.unmute === 'function') {
+                        window.rr.unmute();
+                    }
+                    if (window.Module && window.Module.audioContext && window.Module.audioContext.state === 'suspended') {
+                        window.Module.audioContext.resume();
+                    }
+                } catch(e) {}
+            };
+
             // --- Main Auto-Boot Trigger ---
             window.__av_boot = function() {
                 try {
@@ -1994,6 +1957,7 @@ class DOSBoxPlayerDialog(QDialog):
                     if (isRendering) {
                         dismissStartOverlay();
                         fitCanvas();
+                        if (window.__av_unmute_audio) window.__av_unmute_audio();
                         if (can) {
                             try {
                                 can.tabIndex = 1;
@@ -2003,25 +1967,32 @@ class DOSBoxPlayerDialog(QDialog):
                         return { status: 'running', w: can.width, h: can.height };
                     }
 
-                    // 2. Autoboot: Aggressively trigger start button / click targets across Archive.org emulators
-                    var startTargets = [
-                        document.getElementById('jsmessSS'),
-                        document.querySelector('.js-emulation-emulate'),
-                        document.querySelector('.emularity-splash-screen'),
-                        document.querySelector('button[data-action="start"]'),
-                        document.querySelector('.ia-module button'),
-                        document.getElementById('screenshot')
-                    ];
-                    for (var sIdx = 0; sIdx < startTargets.length; sIdx++) {
-                        var st = startTargets[sIdx];
-                        if (st) {
-                            try { st.click(); } catch(e) {}
+                    // 2. Single-shot trigger start: ONLY fire start once to avoid spawning duplicate WASM workers
+                    if (!window.__av_start_triggered) {
+                        var startTargets = [
+                            document.getElementById('jsmessSS'),
+                            document.querySelector('.js-emulation-emulate'),
+                            document.querySelector('.emularity-splash-screen'),
+                            document.querySelector('button[data-action="start"]'),
+                            document.querySelector('.ia-module button'),
+                            document.getElementById('screenshot')
+                        ];
+                        for (var sIdx = 0; sIdx < startTargets.length; sIdx++) {
+                            var st = startTargets[sIdx];
+                            if (st) {
+                                window.__av_start_triggered = true;
+                                try { st.click(); } catch(e) {}
+                                try {
+                                    var ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+                                    st.dispatchEvent(ev);
+                                } catch(e) {}
+                                break;
+                            }
+                        }
+                        if (window.rr && typeof window.rr.start === 'function' && !window.rr.running) {
                             try {
-                                var ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-                                st.dispatchEvent(ev);
-                            } catch(e) {}
-                            try {
-                                if (window.$) window.$(st).trigger('click');
+                                window.__av_start_triggered = true;
+                                window.rr.start({ hasCustomCSS: true });
                             } catch(e) {}
                         }
                     }
@@ -2055,6 +2026,10 @@ class DOSBoxPlayerDialog(QDialog):
                     font-weight: 600;
                 }
             """)
+            try:
+                self.web_view.page().runJavaScript("if (window.rr && window.rr.mute) window.rr.mute();")
+            except Exception:
+                pass
         else:
             self.mute_btn.setText("🔊 Audio")
             self.mute_btn.setStyleSheet("""
@@ -2072,6 +2047,10 @@ class DOSBoxPlayerDialog(QDialog):
                     color: #ffffff;
                 }
             """)
+            try:
+                self.web_view.page().runJavaScript("if (window.__av_unmute_audio) window.__av_unmute_audio();")
+            except Exception:
+                pass
 
     def _reload_game(self):
         self._load_retries = 0

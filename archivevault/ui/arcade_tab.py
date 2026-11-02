@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from typing import List, Optional
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -1356,8 +1357,32 @@ class ArcadeTab(QWidget):
             self._open_easy_retro_dialog()
         elif clicked == btn_inapp:
             stem = os.path.splitext(fname)[0]
-            ident = f"{platform_name.lower().replace(' ', '_')}_{stem}"
-            self.play_dosbox_requested.emit(ident, f"{platform_name}: {stem}")
+            clean_stem = re.sub(r'[^a-zA-Z0-9]', '', stem).lower()
+            matched_ia = None
+            for key, (ia_id, title) in KNOWN_IA_ARCADE_ROMS.items():
+                if key in clean_stem or clean_stem in key:
+                    matched_ia = ia_id
+                    break
+
+            if matched_ia:
+                self.play_dosbox_requested.emit(matched_ia, f"{platform_name}: {stem}")
+            else:
+                if has_ra:
+                    success = launch_retroarch(file_path, platform_name)
+                    if not success:
+                        self._open_easy_retro_dialog()
+                else:
+                    reply = QMessageBox.information(
+                        self,
+                        f"Offline {platform_name} ROM",
+                        f"<b>{fname}</b> is a local offline ROM file.<br><br>"
+                        "In-App Theater streams pre-configured games directly from Internet Archive.<br>"
+                        "Local ROM files run with full audio and controller support in <b>Easy Retro (RetroArch)</b>.<br><br>"
+                        "Would you like to open <b>Easy Retro Station</b> to run this game?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        self._open_easy_retro_dialog()
         elif clicked == btn_folder:
             open_containing_folder(file_path)
 
